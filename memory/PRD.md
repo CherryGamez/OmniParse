@@ -110,3 +110,16 @@ LLM JSON enforcement w/ retries, safe temp-file cleanup.
 - pypdfium2 is stricter than PyMuPDF: PdfDocument(blank.pdf) raises PdfiumError -> wrapped as OCRError -> was hitting generic 500.
 - Fix: _to_markdown now catches OCRError and re-raises ConversionError(_NO_TEXT_MESSAGE) -> mapped to 422 (sync) and stored as friendly job error (async). Shared _NO_TEXT_MESSAGE constant.
 - Verified: blank.pdf sync=422 'no extractable text', async=FAILED friendly msg; scanned.pdf/jpg/ausweis=200. Full pytest: 27/27 PASS. Frontend: 100%.
+
+## Update (2026-06) — Extraction bug FIX (wrong/partial data on ID-card images) + Docs
+- Repo imported from GitHub (CherryGamez/OmniParse) into the workspace and made runnable (tesseract-ocr deu+eng installed, deps via pip/yarn, supervisor green).
+- ROOT CAUSE of wrong/partial extraction on German ID images: (1) images went to Tesseract whose output is corrupted by guilloche security patterns; (2) vision path unreachable — only openai_compatible had vision, OCR_VISION defaulted false; (3) mock ID heuristic assumed 'Label: value' on one line while German cards print the value on the line BELOW the trilingual label.
+- FIXES: single-shot vision extraction (image -> {transcription, structured} in ONE call) in extraction_pipeline.py; vision support added to ALL providers (new EmergentProvider via emergentintegrations universal key + Gemini Part.from_bytes + Anthropic image blocks); OCR_VISION default true with automatic Tesseract fallback; Tesseract preprocessing (grayscale/upscale/autocontrast); AVIF support (pillow-avif-plugin + image_to_b64 re-encode for vision-safe MIME); mock ID heuristic now label-aware (value-on-next-line) + Führerschein detection.
+- Preview LLM config: LLM_PROVIDER=emergent, openai gpt-4o (gpt-5.4 not available on this gateway key). Local/own-key paths (gemini/anthropic/openai_compatible) untouched.
+- NEW: /app/documents/ folder with PRD.md, TRD.md, APP_FLOW.md; backend GET /api/v1/documents (+/{id}); frontend Docs view (Header nav Console|Docs, DocsPanel.jsx, dependency-free Markdown.jsx renderer).
+- VERIFIED (iteration_6.json, 100% backend 12/12 + 100% frontend): Personalausweis sample -> MUSTERMANN/HANS/14.03.1967/10.12.2028 via vision:openai:gpt-4o (mock=false); AVIF Führerschein -> categories[]; async image job COMPLETED; 401/403; blank-PDF 422 regression closed; Docs UI renders all 3 docs.
+- NOTE: legacy pytest suites (test_extraction_api.py, test_regression_formats.py) assert MOCK-mode invariants — run with USE_MOCK_LLM=true OCR_VISION=false. New authoritative suite: backend/tests/test_vision_and_docs.py.
+
+## Backlog additions (P2)
+- Populate an explicit extractionPath field (vision | tesseract+llm | mock) for observability (rare vision->Tesseract fallback observed ~1/N).
+- Human-in-the-loop field review UI; STRICT_LLM_PROVIDER fail-fast for prod.
