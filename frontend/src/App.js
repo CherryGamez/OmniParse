@@ -1,56 +1,28 @@
-import { useEffect } from "react";
-import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
-import { HOME } from "@/constants/testIds";
+import React, { useState } from "react";
+import useDocIntel from "./hooks/useDocIntel";
+import Header from "./components/Header";
+import InputPanel from "./components/InputPanel";
+import OutputPanel from "./components/OutputPanel";
+import DocsPanel from "./components/DocsPanel";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
-
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
-
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
-
+// Thin composition root: all logic lives in the useDocIntel hook, all markup
+// in the focused Header / InputPanel / OutputPanel / DocsPanel components.
+export default function App() {
+  const state = useDocIntel();
+  const [view, setView] = useState("console"); // console | docs
   return (
-    <div>
-      <header className="App-header">
-        <a
-          data-testid={HOME.emergentLink}
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
-};
-
-function App() {
-  return (
-    <div className="App">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+    <div className="min-h-screen bg-bg font-body text-ink">
+      <div className="w-full max-w-[1600px] mx-auto min-h-screen border-l border-r border-line bg-white">
+        <Header health={state.health} ready={state.ready} view={view} setView={setView} />
+        {view === "console" ? (
+          <div className="grid grid-cols-1 lg:grid-cols-12">
+            <InputPanel {...state} />
+            <OutputPanel {...state} />
+          </div>
+        ) : (
+          <DocsPanel />
+        )}
+      </div>
     </div>
   );
 }
-
-export default App;

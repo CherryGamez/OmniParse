@@ -1,0 +1,48 @@
+{
+  "summary": "Regression after code-quality refactor (App.js split into useDocIntel hook + Header/InputPanel/OutputPanel; JsonViewer rewritten to safe tokenized React nodes; backend run() split into _to_markdown/_extract_structured; security.py and extraction_pipeline.py try/except/else restructured). Backend: 10/10 pytest cases pass (health, ready, JWT mint, sync S3 mock, multipart upload, 401/403/400/404 problem+json, async PENDING->COMPLETED). Frontend: full Playwright flow passes — health/ready badges green, JWT auto-minted (240 chars, 2 dots), sync S3 -> json-output with documentType/title/sections/fields/summary, model-badge='Mock LLM', correlation-id 'ui-...', markdown tab renders markdown text, async PENDING->COMPLETED in ~3 polls, upload dropzone & file-input present. XSS verification: json-output and markdown-output innerHTML contain NO <script> tags — JsonViewer renders all content as escaped React text nodes (no dangerouslySetInnerHTML). API contract unchanged from iteration_2.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_extraction_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "tests_executed": {
+    "backend": [
+      "test_api_health -> 200 healthy",
+      "test_api_ready -> 200 ready, database=ok",
+      "test_auth_token_mint -> JWT (2 dots), expiresIn=3600, roles include extractor",
+      "test_sync_no_auth_returns_401_problem_json -> 401 application/problem+json + correlationId echo",
+      "test_sync_viewer_role_returns_403_problem_json -> 403 problem+json + correlationId",
+      "test_sync_missing_source_returns_400 -> 400 problem+json",
+      "test_sync_extract_s3_uri_mock_fallback -> 200 mock=true model='mock' structured(documentType/title/sections/fields/summary), correlationId echo",
+      "test_sync_extract_multipart_upload -> 200 mock=true structured for uploaded .md",
+      "test_async_extract_and_poll_completion -> 202 PENDING -> COMPLETED with structured result",
+      "test_get_job_nonexistent_returns_404 -> 404 problem+json"
+    ],
+    "frontend": [
+      "health-badge & ready-badge green",
+      "jwt-input auto-populated (len=240, 2 dots)",
+      "source-tab-s3 + extract-btn sync -> json-output structured JSON; model-badge='Mock LLM'; correlation-id='ui-...'",
+      "output-tab-markdown -> markdown-output renders intermediate markdown",
+      "JsonViewer XSS check: innerHTML contains NO <script> for both json-output and markdown-output",
+      "mode-async + extract-btn -> job-status-badge PENDING -> COMPLETED in 3 polls; json-output renders async result",
+      "source-tab-upload -> upload-dropzone + file-input present"
+    ]
+  },
+  "action_items": [],
+  "critical_code_review_comments": [
+    "useDocIntel.js submit() reads JSON body via res.json() before checking res.ok; that's fine for problem+json error bodies but a malformed non-JSON 5xx would throw a Network error rather than surfacing the status. Consider try/catch around .json().",
+    "useDocIntel.js pollJob captures `token` in closure; if user re-mints the token mid-poll, the polling request will keep using the original token (carryover note from iteration_1/2). Low risk for demo.",
+    "JsonViewer TOKEN_RE is shared module-level; safe because lastIndex is reset on each tokenize() call, but worth a comment so future contributors don't move it.",
+    "MetaStrip uses navigator.clipboard?.writeText without a fallback toast/feedback; minor UX gap.",
+    "Carryovers still valid from iteration_2: build_provider() silent mock fallback (consider STRICT_PROVIDER env); LLMExtractionService._attempt retries 4xx auth errors (should be non-retryable); CORS allow_origins='*' with allow_credentials=True; _note string in mock payload should be debug-gated for prod."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "100%"},
+  "test_credentials": "Mock OIDC mint via POST /api/v1/auth/token {sub, roles:['extractor','admin']}; viewer role used for 403 test.",
+  "seed_data_creation": "None (S3 mocked, LLM mock fallback as intended).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Pytest entry: pytest /app/backend/tests/test_extraction_api.py -v. Refactor preserves API contract & UI behavior; JsonViewer is now XSS-safe (no dangerouslySetInnerHTML). For real-provider validation set LLM_PROVIDER + matching API key.",
+  "rca of the issue": "No issues found. Pure code-quality refactor — component/hook extraction, helper function split, and safe JsonViewer tokenization — preserved all behavior."
+}

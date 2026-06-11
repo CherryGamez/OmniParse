@@ -1,0 +1,11 @@
+# Test / development-only dependencies.
+# Install with:  pip install -r requirements.txt -r requirements-dev.txt
+#
+# NOTE: python-pptx, openpyxl, Pillow and PyMuPDF (used by some fixtures) are
+# already pulled in by the runtime requirements (markitdown extras / pillow /
+# PyMuPDF), so they are not repeated here.
+
+pytest==9.0.3           # test runner
+requests==2.34.2        # HTTP client used by the API tests
+reportlab==4.5.1        # generate sample PDFs for the test matrix
+python-docx==1.2.0      # generate sample .docx fixtures

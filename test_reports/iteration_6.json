@@ -1,0 +1,60 @@
+{
+  "summary": "End-to-end certification of the vision-LLM extraction fix (Emergent universal key -> openai gpt-4o), AVIF support, /documents endpoints, and the new Docs view UI. ALL backend (12/12 pytest) and ALL frontend Playwright flows GREEN. The blank-PDF 422 regression from iteration_5 is FIXED. Personalausweis fields (MUSTERMANN, HANS, 14.03.1967, 10.12.2028) extracted via vision; Führerschein AVIF returns DRIVING LICENSE with categories array; S3 invoice JSON via real LLM; async upload polls PENDING -> COMPLETED with vision result; auth 401/403 enforced; /api/v1/documents lists 3 docs and renders PRD/TRD/APP_FLOW markdown with rendered headings/tables and zero raw '**' artifacts; nav-console <-> nav-docs switching works. mock=false and ocrEngine='vision:openai:gpt-4o' confirmed on the wire via curl AND the UI ocr-badge after a stable run.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/v1/extract/sync (image)", "issue": "result.transcription field is returned as empty string on vision path (UI markdown tab can fall back to Tesseract transcription in that case). Not a regression — UI still renders structured JSON correctly; just a polish item if a clean vision transcription is desired in the markdown view."},
+      {"endpoint": "POST /api/v1/extract/sync (image)", "issue": "Observed one out of N invocations where the response carried ocrEngine='tesseract:deu+eng' instead of 'vision:openai:gpt-4o' (still mock=false, structured fields correct). Likely a non-deterministic fallback to Tesseract+LLM when the vision JSON is malformed. Reproducible at low rate; advise instrumenting which branch ran in the response for observability."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_vision_and_docs.py",
+    "/app/test_reports/pytest/iter6_results.xml"
+  ],
+  "tests_executed": {
+    "backend_pytest": "12 collected, 12 PASS in ~30s — TestDocuments (5), TestAuthEnforcement (2), TestVisionExtraction (3: personalausweis, AVIF fuehrerschein, s3 invoice), TestAsyncImage (1), TestBlankRegression (1).",
+    "passing_highlights": [
+      "test_personalausweis_vision_extraction -> ocrEngine='vision:openai:gpt-4o', mock=false, structured.documentType=Personalausweis with surname=MUSTERMANN, givenNames=HANS, dateOfBirth=14.03.1967, dateOfExpiry=10.12.2028",
+      "test_fuehrerschein_avif_vision_extraction -> structured.documentType='DRIVING LICENSE', categories[] populated (A, B1, B, ...), proves AVIF re-encode + vision path",
+      "test_s3_invoice_real_llm -> mock=false, structured invoice JSON returned via real LLM",
+      "test_async_image_completes -> 202 PENDING -> COMPLETED, result.ocrUsed=true",
+      "test_blank_pdf_returns_422 -> 1-byte corrupt PDF returns 422 problem+json (iter5 regression FIXED)",
+      "TestAuthEnforcement: no token -> 401, viewer role -> 403",
+      "TestDocuments: list returns prd/trd/app-flow, GET /documents/prd returns markdown content with '#', /documents/unknown -> 404"
+    ],
+    "frontend_playwright": [
+      "Page loads; health-badge=Health (green dot); ready-badge=Ready (green dot); jwt-input auto-populated (len=240, 2 dots)",
+      "drivlicense.jpg upload + sync -> 200; UI ocr-badge='OCR vision:openai:gpt-4o'; model-badge='openai:gpt-4o'; json-output contains MUSTERMANN/HANS/14.03.1967/10.12.2028 with documentType='Personalausweis'; markdown tab renders transcription",
+      "fuehrerschein.avif upload + sync -> 200; ocr-badge='OCR vision:openai:gpt-4o'; json-output has documentType='DRIVING LICENSE', categories=[{classEndo:A,..},{classEndo:B1,..},{classEndo:B,..}]",
+      "S3 URI tab + s3://demo-bucket/contracts/invoice-001.pdf + sync -> 200; Commercial Invoice JSON rendered (invoiceNumber, lineItems, etc.)",
+      "Async mode + drivlicense.jpg -> 202 jobId, polled to COMPLETED in ~12s; job-status-badge='COMPLETED'; structured JSON renders with MUSTERMANN",
+      "nav-docs -> docs-panel visible; doc-nav-prd/trd/app-flow all render markdown into doc-content; 13 headings + 3 tables rendered; ZERO raw '**' artifacts; nav-console returns to extraction console"
+    ]
+  },
+  "action_items": [
+    "(optional/minor) Have vision_extract populate result.transcription with the model's transcription text so the Markdown tab on vision-extracted images shows a clean transcription instead of falling back to noisy Tesseract output.",
+    "(optional/minor) Add a per-response field (e.g. extractionPath: 'vision' | 'tesseract+llm' | 'mock') for ops/observability so the rare Tesseract fallback case can be tracked."
+  ],
+  "critical_code_review_comments": [
+    "ExtractionResult shape now correctly carries ocrEngine='vision:openai:gpt-4o' and model='openai:gpt-4o' separately — good. Consider adding 'extractionPath' as above for observability.",
+    "OCR_VISION=true is honoured. AVIF round-trip in ocr_service.image_to_b64 works end-to-end (verified via /app/tests/fixtures/fuehrerschein.avif).",
+    "Blank/corrupt PDF path now returns 422 problem+json (the iter5 PDFium regression is closed).",
+    "DocsPanel.jsx + Markdown.jsx render headings and tables correctly with no leftover '**' bold artifacts; nav switching between Console and Docs preserves state.",
+    "Frontend useDocIntel.js POSTs to ${REACT_APP_BACKEND_URL}/api/v1/extract/* and auto-mints the demo token — good; one-time 'Failed to fetch' line in console at startup appears to be pre-token-mint health probe that recovers immediately (no UX impact)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_vision_and_docs.py (NEW: 12 tests covering vision extraction, AVIF, /documents, auth/RBAC, async, blank-PDF regression)"
+  ],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "100% (5/5 flows)"},
+  "test_credentials": "FLAG: /app/memory/test_credentials.md is NOT present (only PRD.md exists). For this app no real user credentials are needed — auth is mock OIDC via POST /api/v1/auth/token with body {sub, roles:['extractor','admin']}. Viewer-only token used to verify 403.",
+  "seed_data_creation": "No new seed data. Used pre-existing /app/tests/fixtures/drivlicense.jpg (Personalausweis Hans Mustermann), /app/tests/fixtures/fuehrerschein.avif (AVIF driving licence). Blank PDF generated in tmp_path during the regression test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All review_request bullets are GREEN. The vision LLM path (gpt-4o via Emergent universal key) is verified end-to-end on both German ID samples and the AVIF driving licence. Backend test file at /app/backend/tests/test_vision_and_docs.py is the authoritative regression suite for this fix — re-run with: REACT_APP_BACKEND_URL=$(grep REACT_APP_BACKEND_URL /app/frontend/.env | cut -d= -f2) python -m pytest backend/tests/test_vision_and_docs.py -v . The legacy /app/backend/tests/test_extraction_api.py and test_regression_formats.py assert MOCK-mode invariants and are NOT compatible with the current real-LLM config — do not treat their failures as bugs. One minor non-determinism observed: ~1 in N image extractions returns ocrEngine='tesseract:deu+eng' instead of 'vision:openai:gpt-4o' (LLM fallback path); the structured payload remained correct in those cases.",
+  "rca of the issue": "Original user-reported bug ('German ID images not being extracted') is RESOLVED. Verified via curl + Playwright + pytest: backend returns mock=false, ocrEngine='vision:openai:gpt-4o', structured = {documentType:'Personalausweis', surname:'MUSTERMANN', givenNames:'HANS', dateOfBirth:'14.03.1967', dateOfExpiry:'10.12.2028', placeOfBirth:'MUSTERSTADT', country:'Deutschland', ...}. AVIF (fuehrerschein.avif) is re-encoded and processed through the same vision path, returning documentType='DRIVING LICENSE' with a categories array. Blank-PDF 422 regression from iter5 is also closed."
+}

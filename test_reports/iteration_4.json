@@ -1,0 +1,70 @@
+{
+  "summary": "Iteration 4 — Full regression of NEW Omniparse OCR upgrade (offline Tesseract deu+eng) + Personalausweis auto-detection on top of the existing 9-format MarkItDown matrix. Fixed iter4-authored assertion in test_regression_formats.py (S3 sync correlationId lives under result, not top-level). Added 5 NEW backend tests for OCR/ID flows. Backend: 27/27 pytest cases pass (10 in test_extraction_api.py + 17 in test_regression_formats.py). Frontend Playwright: page loads, health-badge GREEN, ready-badge GREEN, JWT auto-minted (len=240, 2 dots). Image upload (german_doc.jpg) -> 200, ocr-badge='OCR tesseract:deu+eng' rendered, model-badge='Mock LLM', correlation-id='ui-...', structured JSON shows German fields (Steuer Identifikationsnummer, Meldebescheinigung, Mietvertrag, München, Bayern), Markdown tab shows OCR text with umlauts preserved. S3 sync -> 200, no ocr-badge (correct, ocrUsed=false). Async mode + .docx upload -> 202 PENDING -> COMPLETED with structured result rendered. RFC 7807 problem+json verified for 401/403/400/404/422. Blank PDF still 422 with 'no extractable text'; scanned image-only PDF now succeeds via OCR fallback (ocrUsed=true). German umlauts ä ö ü ß round-trip correctly through JSON transport.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_extraction_api.py",
+    "/app/backend/tests/test_regression_formats.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/pytest/regression_results.xml"
+  ],
+  "tests_executed": {
+    "backend": [
+      "test_api_health, test_api_ready -> 200",
+      "test_auth_token_mint -> JWT minted (HS256, 2 dots, expiresIn=3600)",
+      "test_sync_no_auth_returns_401_problem_json -> 401 application/problem+json + X-Correlation-Id echo",
+      "test_sync_viewer_role_returns_403_problem_json -> 403 problem+json",
+      "test_sync_missing_source_returns_400 -> 400 problem+json",
+      "test_get_job_nonexistent_returns_404 -> 404 problem+json",
+      "test_sync_extract_s3_uri_mock_fallback -> 200 mock=true model='mock'",
+      "test_sync_extract_multipart_upload -> 200 structured",
+      "test_async_extract_and_poll_completion -> 202 PENDING -> COMPLETED",
+      "test_sync_format_matrix_returns_200_structured x9 (PDF text, DOCX, PPTX, XLSX, TXT, MD, HTML, CSV, JSON) -> all 200, mock=true, structured(documentType/title/sections/fields/summary), markdownChars>0",
+      "test_sync_blank_pdf_returns_422_problem_json -> 422 'no extractable text' + correlationId echo (NOT 500)",
+      "test_async_blank_pdf_polls_to_failed -> 202 -> FAILED with clear error",
+      "test_sync_s3_json_body_returns_200 -> 200 result.correlationId echo (assertion FIXED)",
+      "NEW test_sync_ocr_image_jpeg_german -> 200, result.ocrUsed=true, ocrEngine contains 'tesseract'+'deu'+'eng', markdownChars>0, structured present",
+      "NEW test_sync_ocr_personalausweis_detection -> structured.documentType=='Personalausweis' with surname/givenNames/dateOfBirth populated, ocrUsed=true",
+      "NEW test_sync_scanned_pdf_ocr_fallback -> 200 with ocrUsed=true via PyMuPDF rasterize + Tesseract (previously 500/422)",
+      "NEW test_sync_german_chars_preserved -> ä ö ü ß all present in response markdown",
+      "NEW test_async_image_ocr_completes -> 202 PENDING -> COMPLETED with result.ocrUsed=true"
+    ],
+    "frontend": [
+      "page loads, health-badge GREEN, ready-badge GREEN",
+      "jwt-input auto-populated (len=240, 2 dots) via /api/v1/auth/token",
+      "source-tab-upload + file-input set to /tmp/german_doc.jpg + sync extract -> 200, json-output rendered with documentType/title/sections/fields/summary",
+      "ocr-badge present with text 'OCR tesseract:deu+eng' (data-testid='ocr-badge')",
+      "model-badge='Mock LLM', correlation-id='ui-mprlpt8s'",
+      "markdown-output renders OCR'd German text (Kontoetatinung, Meldebescheinigung, Steuer Identifikationsnummer, Mietvertrag, München, Bayern)",
+      "source-tab-s3 + sync -> 200 json-output with ACME invoice fields; ocr-badge ABSENT (ocrUsed=false) — correct",
+      "mode-async + upload s.docx + extract -> 202 PENDING -> COMPLETED in poll loop; json-output renders structured result",
+      "All RFC 7807 error paths covered by backend pytest"
+    ]
+  },
+  "action_items": [],
+  "critical_code_review_comments": [
+    "OCRService correctly registers pillow_heif before any Image.open; verified IMAGE_EXTS includes .heic/.heif. Recommend smoke-testing a HEIC fixture in a future iteration (no .heic fixture currently in /tmp).",
+    "ExtractionPipeline._convert_path routes images -> OCR and PDFs -> text-layer-first-then-OCR-fallback. The OCR fallback on PDFs uses PyMuPDF rasterize per page; consider capping page count for very large scanned PDFs (latency/memory) — currently no max-pages guard observed.",
+    "LLMExtractionService._mock_extract auto-detects Personalausweis via _ID_MARKERS — keyword match works on synthetic fixtures. For production, consider also matching on MRZ patterns (IDD<<...) for stronger detection.",
+    "OpenAICompatibleProvider.supports_vision=True path (OCR_VISION=true) was NOT exercised here because no hosted vision model is configured (OCR_VISION=false in env). Functional but unverified end-to-end.",
+    "Carryovers still valid: build_provider() silent mock fallback (consider STRICT_PROVIDER env); LLMExtractionService._attempt retries 4xx auth errors (should be non-retryable); CORS allow_origins='*' with allow_credentials=True; mock _note field should be debug-gated for prod.",
+    "Sync file cap 5MB->413 not exercised in this run (no >5MB fixture); main agent's hand-off says it's enforced."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_regression_formats.py (fixed S3 correlationId assertion to read from payload.result; appended 5 OCR/ID/async-OCR tests)"
+  ],
+  "success_rate": {"backend": "100% (27/27)", "frontend": "100%"},
+  "test_credentials": "Mock OIDC mint via POST /api/v1/auth/token {sub, roles:['extractor','admin']}; viewer role used for 403 path. No LLM keys -> deterministic mock fallback (model='mock'). Tesseract OCR is REAL/offline (deu+eng).",
+  "seed_data_creation": "Reused pre-staged /tmp fixtures: text.pdf, blank.pdf, s.{docx,pptx,xlsx,txt,md,html,csv,json}, german_doc.jpg, ausweis.png, scanned.pdf. No new files created.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Run all backend tests: REACT_APP_BACKEND_URL=<url> pytest /app/backend/tests/ -v --junitxml=/app/test_reports/pytest/pytest_results.xml. The Omniparse OCR upgrade is end-to-end working: Tesseract deu+eng OCRs images and scanned PDFs; Personalausweis auto-detection populates documentType+surname+givenNames+dateOfBirth; ocr-badge surfaces in UI with engine string. Open verification gaps: (1) OCR_VISION=true path (no hosted vision provider here), (2) HEIC fixture (pillow-heif registered but no .heic file in /tmp), (3) >5MB 413 file-cap. Backend extraction pipeline unchanged contract for the 9 text formats — no regression.",
+  "rca of the issue": "Carryover from iter4: the freshly-authored test_regression_formats.py used payload.get('correlationId') for the S3 sync test, but for SYNC responses correlationId is nested under payload['result']. Fixed in this iteration. All other assertions (top-level for problem+json error bodies, result-nested for success bodies) match the real API contract observed via curl and Playwright."
+}

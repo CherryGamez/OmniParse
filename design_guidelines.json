@@ -1,0 +1,69 @@
+{
+  "theme": "LIGHT",
+  "archetype": "4 - Swiss & High-Contrast",
+  "design_philosophy": "Objective, rigid, and functional. Designed as a developer control room. Features heavy use of monospace typography for data and stark contrasts for interactive elements.",
+  "colors": {
+    "primary": "#111111",
+    "primary_foreground": "#FFFFFF",
+    "secondary": "#0000FF",
+    "secondary_foreground": "#FFFFFF",
+    "background": "#F9FAFB",
+    "surface": "#FFFFFF",
+    "border": "#E5E7EB",
+    "text": "#111111",
+    "text_muted": "#6B7280",
+    "success": "#16A34A",
+    "warning": "#EAB308",
+    "error": "#DC2626",
+    "json_key": "#2563EB",
+    "json_string": "#16A34A",
+    "json_number": "#D97706"
+  },
+  "typography": {
+    "headings": "Chivo, sans-serif",
+    "body": "IBM Plex Sans, sans-serif",
+    "code": "IBM Plex Mono, monospace",
+    "hierarchy": {
+      "h1": "text-3xl tracking-tight font-bold",
+      "h2": "text-xl tracking-tight font-semibold",
+      "h3": "text-lg tracking-tight font-medium",
+      "body": "text-sm leading-relaxed",
+      "code": "text-xs tracking-tight",
+      "labels": "text-xs uppercase tracking-[0.2em] font-medium"
+    }
+  },
+  "layout": {
+    "grid_system": "Control Room Grid (grid-cols-1 lg:grid-cols-12 gap-0)",
+    "spacing": "Dense internal padding (p-6) with crisp grid borders",
+    "surface_strategy": "Grid Borders: Expose the skeleton. Use border-r and border-b on grid items instead of shadow cards. The entire layout should feel like a single cohesive dashboard pane.",
+    "container": "w-full max-w-[1600px] mx-auto min-h-screen border-l border-r border-border bg-white"
+  },
+  "components": {
+    "cards": "Cardless style. Flat background (bg-white), 1px solid border-border, 0 shadow. Sharp corners (rounded-none).",
+    "buttons": "Flat, stark contrast. Primary uses bg-black text-white hover:bg-black/90. Secondary uses transparent bg, 1px border hover:bg-gray-100. Sharp corners (rounded-none).",
+    "inputs": "Flat, 1px border border-border bg-gray-50/50. Focus: ring-1 ring-black border-black. No shadow. Rounded-none.",
+    "tabs": "Minimalist. Underline style with sharp borders. Active state: border-b-2 border-black text-black.",
+    "header": "Solid White with hard bottom border-border. Height 64px. Flex container with health/readiness badges on the right. Pinned to top.",
+    "badges": "Flat, text-xs uppercase tracking-wider. bg-gray-100 text-gray-800 border border-gray-200. Status badges use specific colors (e.g. bg-green-50 text-green-700 border-green-200)."
+  },
+  "interactions": {
+    "hover": "Subtle background shifts (bg-gray-50 to bg-gray-100). Links get underline.",
+    "focus": "High contrast ring (ring-2 ring-black outline-none).",
+    "motion": "Minimal. Fast transitions (150ms ease). No bounce. Only opacity and simple background color changes."
+  },
+  "icons": "lucide-react (stark, clean linework, usually size 16 or 20)",
+  "media": {
+    "background_texture": "https://images.pexels.com/photos/5506216/pexels-photo-5506216.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+  },
+  "specific_instructions_for_main_agent": [
+    "Use pure HTML/Tailwind for the main grid layout to ensure the 'border-collapse' technical look. Avoid using pre-built Card components if they force rounded corners and shadows.",
+    "The layout should have a left sidebar/column (col-span-1 lg:col-span-4) for inputs (Upload, S3 URI, JWT, Sync/Async toggle) and a main area (col-span-1 lg:col-span-8) for Output (Markdown/JSON viewer).",
+    "Do not use generic shadows anywhere. The UI must feel flat and functional like a CLI or pro developer tool.",
+    "For the JSON viewer and Markdown preview, use the 'IBM Plex Mono' font and a light theme with specific syntax highlight colors (keys in blue, strings in green, numbers in orange).",
+    "Apply the background_texture to the body with extremely low opacity (opacity-5) and mix-blend-multiply to give a subtle paper/matte feel to the otherwise stark digital UI.",
+    "The Health/Ready badges in the header must be small uppercase labels with a status dot.",
+    "Implement a clear 'Correlation ID' display block that looks like a terminal output or copyable field in the results area.",
+    "Use standard HTML input type='file' disguised as a sharp-edged dropzone area.",
+    "Use data-testid attributes on all interactive elements (e.g., data-testid='upload-dropzone', data-testid='sync-toggle', data-testid='jwt-input', data-testid='job-status-badge')."
+  ]
+}

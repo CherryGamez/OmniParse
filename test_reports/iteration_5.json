@@ -1,0 +1,76 @@
+{
+  "summary": "Regression certification for the PyMuPDF -> pypdfium2 (PDFium) swap in ocr_service.ocr_pdf. Reused /app/backend/tests/ (no test edits needed). Pytest: 25/27 PASS. Frontend Playwright: all 4 required UX paths PASS — scanned.pdf via PDFium rasterizer renders OCR tesseract:deu+eng badge with German content; german_doc.jpg image OCR renders ocr-badge; S3 sync renders without ocr-badge (correct); async + s.docx -> 202 PENDING -> COMPLETED. The CHANGED scanned-PDF path is GREEN end-to-end. However, ONE NEW HIGH-PRIORITY REGRESSION introduced by the swap: blank/empty PDF now returns HTTP 500 (was 422) because pypdfium2 raises PdfiumError on load ('Failed to load document (PDFium: Success).') which is wrapped as OCRError and falls through to the generic 500 handler instead of being mapped to ConversionError -> 422. The async path for blank.pdf also surfaces the raw PDFium error string instead of the expected 'no extractable text' message. All other 9 formats, OCR image, Ausweis detection, German char round-trip, multipart upload, S3, async OCR, auth/RBAC, X-Correlation-Id all behave correctly.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/v1/extract/sync (blank.pdf upload)",
+        "issue": "Returns 500 instead of 422 problem+json. After the PyMuPDF -> pypdfium2 swap, a zero-page/blank PDF causes pdfium.PdfDocument(path) to raise PdfiumError('Failed to load document (PDFium: Success).'). ocr_service.ocr_pdf wraps it as OCRError. extraction_pipeline._convert_path / _to_markdown does NOT catch OCRError -> mapped to generic 500 by FastAPI default handler instead of ConversionError -> 422 'no extractable text'.",
+        "priority": "HIGH"
+      },
+      {
+        "endpoint": "POST /api/v1/extract/async (blank.pdf upload)",
+        "issue": "Job status FAILED but error field is the raw pypdfium2 message 'OCR failed for PDF: Failed to load document (PDFium: Success).' instead of the expected user-friendly 'no extractable text' message. Same root cause as the sync 500.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_extraction_api.py",
+    "/app/backend/tests/test_regression_formats.py",
+    "/app/test_reports/pytest/iter5_results.xml"
+  ],
+  "tests_executed": {
+    "backend_pytest": "27 collected, 25 PASS, 2 FAIL (both = blank.pdf 422 regression)",
+    "passing": [
+      "test_api_health, test_api_ready",
+      "test_auth_token_mint, test_sync_no_auth_returns_401_problem_json, test_sync_viewer_role_returns_403_problem_json",
+      "test_sync_missing_source_returns_400, test_get_job_nonexistent_returns_404",
+      "test_sync_extract_s3_uri_mock_fallback, test_sync_extract_multipart_upload",
+      "test_async_extract_and_poll_completion",
+      "test_sync_format_matrix_returns_200_structured x9 (PDF text, DOCX, PPTX, XLSX, TXT, MD, HTML, CSV, JSON)",
+      "test_sync_s3_json_body_returns_200",
+      "test_sync_ocr_image_jpeg_german (ocrUsed=true, engine='tesseract:deu+eng')",
+      "test_sync_ocr_personalausweis_detection (documentType=Personalausweis + surname/givenNames/dateOfBirth)",
+      "test_sync_scanned_pdf_ocr_fallback — THE CHANGED PATH — 200 ocrUsed=true via pypdfium2 rasterize + Tesseract",
+      "test_sync_german_chars_preserved (ä ö ü ß)",
+      "test_async_image_ocr_completes (202 PENDING -> COMPLETED ocrUsed=true)"
+    ],
+    "failing": [
+      "test_sync_blank_pdf_returns_422_problem_json -> got 500 (expected 422)",
+      "test_async_blank_pdf_polls_to_failed -> got FAILED but error='OCR failed for PDF: Failed to load document (PDFium: Success).' instead of 'no extractable text'"
+    ],
+    "frontend_playwright": [
+      "page loads; health-badge GREEN; ready-badge GREEN; jwt-input auto-populated (len=240, 2 dots)",
+      "scanned.pdf upload (PDFium-changed path): 200, ocr-badge='OCR tesseract:deu+eng', json-output rendered with German content (Kontoeröffnung, Meldebescheinigung, Steuer-Identifikationsnummer, Mietvertrag, München, Bayern), model-badge='Mock LLM'",
+      "german_doc.jpg upload: 200, ocr-badge='OCR tesseract:deu+eng'",
+      "S3 sync: 200, ocr-badge ABSENT (correct), ACME invoice JSON rendered",
+      "Async + s.docx: 202 -> COMPLETED, structured result rendered, job-status-badge='COMPLETED'"
+    ]
+  },
+  "action_items": [
+    "Catch pypdfium2 load failure on empty/zero-page PDFs in services/extraction_pipeline.py::_convert_path (the .pdf branch) OR in services/ocr_service.py::ocr_pdf: when pdf load fails or len(pdf)==0, return '' instead of raising OCRError, so _to_markdown raises ConversionError('no extractable text...') -> 422.",
+    "Alternative: add OCRError -> ConversionError translation in extraction_pipeline (treat any OCRError that results in no text as 'no extractable text').",
+    "After fix, both test_sync_blank_pdf_returns_422_problem_json and test_async_blank_pdf_polls_to_failed must turn green.",
+    "Optional hardening: also try pdf load with try/except and explicitly check len(pdf)==0 to emit a deterministic 'no extractable text' message for both sync (422) and async (FAILED error field)."
+  ],
+  "critical_code_review_comments": [
+    "ocr_service.ocr_pdf wraps EVERY pypdfium2 exception (including load failures) into OCRError, but OCRError is NOT a registered FastAPI exception handler — it bubbles to the generic 500. Either translate OCRError to ConversionError in extraction_pipeline._convert_path, or register an OCRError handler that maps to 422 when the failure mode is 'document has no readable content'.",
+    "ocr_max_pages guard is properly applied via min(total, settings.ocr_max_pages) and a warning log — good. But there is no fallback if len(pdf) returns 0 (valid but empty PDF) — that path currently returns '' which would be correctly mapped to 422 via _to_markdown's empty check; the regression is strictly the PdfDocument(path) constructor failure path on malformed/empty xref PDFs.",
+    "Recommend exposing settings.ocr_max_pages via /api/health metadata for ops visibility.",
+    "Carryovers from iter4 still valid (build_provider silent mock fallback; 4xx retried in _attempt; CORS allow_credentials with '*'; mock _note field debug-gating)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "92.6% (25/27)", "frontend": "100%"},
+  "test_credentials": "Mock OIDC mint via POST /api/v1/auth/token {sub, roles:['extractor','admin']}; viewer-only token for 403 path. OCR Tesseract deu+eng real/offline. No LLM keys -> deterministic mock fallback (model='mock').",
+  "seed_data_creation": "Reused pre-staged /tmp fixtures (text.pdf, blank.pdf, s.{docx,pptx,xlsx,txt,md,html,csv,json}, german_doc.jpg, ausweis.png, scanned.pdf). No new files.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Single remaining blocker: blank.pdf 500 regression caused by pypdfium2.PdfDocument(path) raising PdfiumError on malformed/empty PDFs. Fix is small (catch in extraction_pipeline.py or ocr_service.py) and the existing 2 failing tests (test_sync_blank_pdf_returns_422_problem_json + test_async_blank_pdf_polls_to_failed) will validate. Everything else (the actual CHANGED scanned-PDF rasterizer path, German OCR, Personalausweis detection, all 9 formats, RBAC, RFC 7807, X-Correlation-Id, async polling, frontend UX) is GREEN.",
+  "rca of the issue": "PyMuPDF (fitz) silently opened blank.pdf and returned 0 text, which _to_markdown then translated to ConversionError('no extractable text...') -> 422. pypdfium2.PdfDocument(path) is stricter and raises PdfiumError('Failed to load document (PDFium: Success).') for the same fixture (a 912-byte ReportLab PDF with no pages). ocr_service.ocr_pdf wraps it in OCRError; there is no exception_handler for OCRError in main.py, so FastAPI's default 500 handler responds. Repro: curl -X POST $BASE/api/v1/extract/sync -H 'Authorization: Bearer $JWT' -F 'file=@/tmp/blank.pdf;type=application/pdf' -F 'instructions=x' -> 500 problem+json. Mitigation (any one): (a) ocr_service.ocr_pdf catches load failures and returns '' so empty-markdown path triggers; (b) extraction_pipeline._convert_path wraps the ocr_pdf call in try/except OCRError -> raise ConversionError('no extractable text...'); (c) register OCRError -> 422 handler in main.py."
+}

@@ -1,0 +1,55 @@
+{
+  "summary": "Full e2e backend (pytest, 10/10) + frontend (Playwright) verification of the Document Intelligence Platform. Real Gemini 3 Pro extraction, mock S3 ingestion, async job state, RFC 7807 errors, correlation-id echo and RBAC all verified end-to-end through the external ingress.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_extraction_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "tests_executed": {
+    "backend": [
+      "test_api_health -> 200 healthy",
+      "test_api_ready -> 200 ready, database=ok",
+      "test_auth_token_mint -> JWT minted, expiresIn=3600",
+      "test_sync_no_auth_returns_401_problem_json -> 401 problem+json with correlationId echoed",
+      "test_sync_viewer_role_returns_403_problem_json -> 403 problem+json with correlationId",
+      "test_sync_missing_source_returns_400 -> 400 problem+json",
+      "test_sync_extract_s3_uri_real_gemini -> 200, model=gemini-3.1-pro-preview, mock=false, structured+markdown present, correlationId echoed",
+      "test_sync_extract_multipart_upload -> 200, structured JSON from uploaded .md file",
+      "test_async_extract_and_poll_completion -> 202 PENDING -> polled to COMPLETED with structured result (~9s)",
+      "test_get_job_nonexistent_returns_404 -> 404 problem+json"
+    ],
+    "frontend": [
+      "Page loads with health-badge + ready-badge",
+      "JWT auto-minted into jwt-input on load (240 chars, JWT format)",
+      "Switch to S3 tab + sync mode + Run Extraction -> json-output rendered",
+      "correlation-id displayed (ui-mprgm857), model-badge shows gemini-3.1-pro-preview",
+      "Markdown tab renders markdown-output",
+      "Switch to async mode + Run Extraction -> job-status-badge PENDING -> COMPLETED in ~9s, result rendered in json-output"
+    ]
+  },
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Job polling interval (1.5s) in App.js never sends an updated Authorization header if the user re-mints the token while a job is in flight; not a functional bug today but worth noting for prod hardening.",
+    "create_mock_token signs the token with `aud` and decode_token validates that audience, but no `iss` validation is enforced - acceptable for a mock OIDC layer but mention in docs.",
+    "CORS is wildcard (allow_origins=['*']) with allow_credentials=True - works for the demo but should be tightened to the ingress origin before production.",
+    "Sync 5MB cap returns 413 with a helpful message - good. Consider also returning a problem+json `errors` field to be fully RFC 7807 compliant (currently only `title`/`detail`/`status`/`correlationId` are present)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_extraction_api.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Mock OIDC - mint via POST /api/v1/auth/token with {sub, roles:['extractor','admin']}. Viewer role used to verify 403.",
+  "seed_data_creation": "None - S3 ingestion is mocked (USE_MOCK_S3=true), returns a sample invoice for any s3:// URI. Async jobs persisted in SQLite (jobs.db).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend tests live at /app/backend/tests/test_extraction_api.py; run with `pytest backend/tests/test_extraction_api.py -v`. Real Gemini calls take ~5-12s so SYNC_TIMEOUT=60s and ASYNC_POLL_TIMEOUT=45s. External URL is the only correct base (REACT_APP_BACKEND_URL); /health and /ready are k8s-only so always use /api/health and /api/ready externally. App is fully working as of this iteration.",
+  "rca of the issue": "No issues found."
+}

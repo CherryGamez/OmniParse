@@ -1,0 +1,60 @@
+{
+  "summary": "Regression test of Document Intelligence Platform after LLM-provider refactor (Emergent key removed; pluggable Gemini/Anthropic/openai_compatible providers). With no LLM keys configured on this platform, the pipeline correctly falls back to the deterministic mock extractor (model='mock', mock=true). All 10 backend pytest cases pass and the full Playwright UI flow (sync via S3, markdown tab, async PENDING->COMPLETED) renders correctly with model-badge='Mock LLM'.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_extraction_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "tests_executed": {
+    "backend": [
+      "test_api_health -> 200 healthy",
+      "test_api_ready -> 200 ready, database=ok",
+      "test_auth_token_mint -> JWT minted, expiresIn=3600",
+      "test_sync_no_auth_returns_401_problem_json -> 401 problem+json + correlationId echo",
+      "test_sync_viewer_role_returns_403_problem_json -> 403 problem+json + correlationId",
+      "test_sync_missing_source_returns_400 -> 400 problem+json",
+      "test_sync_extract_s3_uri_mock_fallback -> 200, mock=true, model='mock', structured has documentType/title/sections/fields/summary, correlationId echo",
+      "test_sync_extract_multipart_upload -> 200 mock=true structured returned for uploaded .md",
+      "test_async_extract_and_poll_completion -> 202 PENDING -> COMPLETED with structured result (mock is instant)",
+      "test_get_job_nonexistent_returns_404 -> 404 problem+json"
+    ],
+    "frontend": [
+      "health-badge=Health (green), ready-badge=Ready (green)",
+      "JWT auto-minted into jwt-input (len=240, JWT format with 2 dots)",
+      "Sync via S3 URI tab -> json-output rendered with mock structured JSON (documentType/title/sections/fields/summary/_note)",
+      "model-badge shows 'Mock LLM' (since no provider key configured)",
+      "correlation-id displayed (e.g. ui-mpri2exs)",
+      "Markdown (Intermediate) tab renders markdown-output with the source invoice markdown",
+      "Async mode -> job-status-badge PENDING -> COMPLETED in ~1-2 polls; structured JSON result rendered"
+    ]
+  },
+  "action_items": [],
+  "critical_code_review_comments": [
+    "build_provider() silently returns None when a provider key/endpoint is missing (mock fallback). Convenient for demo, but in production this could mask a misconfig (LLM_PROVIDER=gemini but GEMINI_API_KEY empty -> all extractions become mock). Consider an explicit settings.allow_mock_fallback flag or a STRICT_PROVIDER=true env that raises instead of falling back.",
+    "OpenAICompatibleProvider falls back to api_key='not-needed' string literal silently inside __init__ for falsy keys; fine for self-hosted vLLM/Ollama but should be documented in README so users understand the contract.",
+    "LLMExtractionService._attempt always wraps the underlying SDK exception in a single LLMExtractionError class and retries up to 3 times; auth (401/403) and 4xx validation errors from a real provider should be non-retryable (currently they would be retried 3x, wasting time and possibly hitting rate limits).",
+    "settings.gemini_model defaults to 'gemini-3-pro-preview' but previous iteration's response showed 'gemini-3.1-pro-preview'; ensure the default tracks the actual GA model name for the docs/demo when a key is configured.",
+    "ChunkingService.chunk uses split('\\n\\n') and a single accumulator; for documents with no blank lines (long single paragraph above the threshold) it would emit one oversized chunk - acceptable but worth a comment.",
+    "Job polling in App.js does not invalidate / refresh the Authorization header if the user re-mints the token mid-flight (carryover note from iteration_1).",
+    "CORS allow_origins='*' with allow_credentials=True (carryover from iteration_1) - tighten before prod.",
+    "The mock _note string ('MOCK extraction (LLM mock mode / no key configured).') is exposed to clients in the structured payload; fine for the demo but consider gating it behind a debug flag in prod."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_extraction_api.py (updated test_sync_extract_s3_uri_real_gemini -> test_sync_extract_s3_uri_mock_fallback; asserts mock=true, model='mock', structured schema keys; relaxed multipart test to assert mock=true model='mock')"
+  ],
+  "success_rate": {"backend": "100% (10/10)", "frontend": "100%"},
+  "test_credentials": "Mock OIDC - mint via POST /api/v1/auth/token {sub, roles:['extractor','admin']}. Viewer role used to verify 403.",
+  "seed_data_creation": "None - S3 is mocked (USE_MOCK_S3=true). LLM is in mock fallback (no provider key set), which is the intended state per the request.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Pytest entry point: pytest /app/backend/tests/test_extraction_api.py -v. With no LLM keys set, expect mock=true / model='mock'. To validate a real provider end-to-end: set LLM_PROVIDER + the matching *_API_KEY (or LLM_PROVIDER=openai_compatible with OPENAI_BASE_URL pointing at a vLLM/Ollama/LiteLLM endpoint) and update assertions accordingly. The air-gapped openai_compatible path was manually validated by the main agent against a local stub (returned mock=false).",
+  "rca of the issue": "No issues found. The refactor preserves the existing API contract; mock fallback is triggered exactly as expected when no provider key is configured."
+}
