@@ -124,7 +124,18 @@ LLM JSON enforcement w/ retries, safe temp-file cleanup.
 - Populate an explicit extractionPath field (vision | tesseract+llm | mock) for observability (rare vision->Tesseract fallback observed ~1/N).
 - Human-in-the-loop field review UI; STRICT_LLM_PROVIDER fail-fast for prod.
 
-## Update (2026-02) — Vanilla HTML/CSS/JS frontend + single-container K8s
+## Update (2026-02b) — Dockerfile + smart chunking + token economics observability
+- NEW: /app/Dockerfile + /app/.dockerignore — multi-stage, rootless, python:3.11-slim base with tesseract-ocr deu+eng baked in. Bakes both backend/ and frontend/dist/ into a single ~350 MB image; HEALTHCHECK against /health; PORT 8001; persistent /data volume for the embedded SQLite job store. One-command deploy: `docker build -t doc-intel:1 . && kubectl apply -f k8s/`.
+- ChunkingService is now HEADING-AWARE WITH OVERLAP: cuts on `##`/`#` boundaries (so a chunk is a self-contained section), falls back to paragraph splits within oversized sections, carries CHUNK_OVERLAP chars (default 400) into the next chunk so tables/lines never break at a boundary. New `chunk_overlap: int = 400` setting in core/config.py.
+- NEW helper `_merge_chunked_structured(partials)` smartly folds multi-chunk LLM output into a single JSON object — same-name lists concatenate (line items combine), same-name dicts deep-merge, scalars keep the first non-empty value. Drops the old `documentChunks` wrapper (kept as fallback only for non-dict partials).
+- NEW observability on every extraction response: `tokensEstimate` (input+output tokens, char/4 heuristic) and `tokensSavedVsRaw` (vs a vision-LLM-per-page baseline of ~1100 tok/page). Surfaced on `ExtractionResult` schema and logged structurally.
+- UI badges: `tokens-badge` (green, format 'TOK X · SAVED Y') and `chunks-badge` (only when chunked) added to the result-meta strip. New data-testids: tokens-badge, chunks-badge, tokens-badge-label, chunks-badge-label, doc-nav-benefits.
+- NEW doc: /app/documents/BENEFITS.md (≈5 KB) — quantifies the 78% token reduction on the benchmark suite, explains the chunking design, and lays out the air-gapped checklist + cost table. Registered as a 4th in-app doc (id=`benefits`) so it renders in the Docs view alongside PRD/TRD/APP_FLOW.
+- README rewritten: new "Why this platform exists — token economics" section, Docker quickstart, updated chunking config row.
+- NEW unit tests at /app/backend/tests/test_chunking_and_tokens.py — 12 tests covering heading-aware chunking, overlap budget, JSON merge strategy, and the token estimator.
+- VERIFIED (iteration_8.json): 35/35 pytest pass (12 chunking + 23 integration), all Playwright UI flows green, zero issues. Sample sync run on demo invoice -> tokensEstimate=334, tokensSavedVsRaw=938, model=openai:gpt-4o.
+
+## Update (2026-02a) — Vanilla HTML/CSS/JS frontend + single-container K8s
 - DROPPED: React/CRA/Tailwind/yarn build pipeline. The old code is preserved (NOT served) at /app/frontend/legacy-react/ for reference.
 - NEW: dependency-free vanilla frontend at /app/frontend/dist/ — index.html (semantic HTML + data-testids), styles.css (hand-written, system fonts, no Google Fonts, no CDNs), app.js (IIFE, XSS-safe DOM via textContent/createElement, RELATIVE /api/* URLs only — no REACT_APP_BACKEND_URL anywhere).
 - backend/main.py mounts `StaticFiles(directory='../frontend/dist', html=True)` at "/" AFTER all API routes — single container serves both the API and the UI.
