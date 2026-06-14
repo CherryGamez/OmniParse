@@ -123,3 +123,13 @@ LLM JSON enforcement w/ retries, safe temp-file cleanup.
 ## Backlog additions (P2)
 - Populate an explicit extractionPath field (vision | tesseract+llm | mock) for observability (rare vision->Tesseract fallback observed ~1/N).
 - Human-in-the-loop field review UI; STRICT_LLM_PROVIDER fail-fast for prod.
+
+## Update (2026-02) — Vanilla HTML/CSS/JS frontend + single-container K8s
+- DROPPED: React/CRA/Tailwind/yarn build pipeline. The old code is preserved (NOT served) at /app/frontend/legacy-react/ for reference.
+- NEW: dependency-free vanilla frontend at /app/frontend/dist/ — index.html (semantic HTML + data-testids), styles.css (hand-written, system fonts, no Google Fonts, no CDNs), app.js (IIFE, XSS-safe DOM via textContent/createElement, RELATIVE /api/* URLs only — no REACT_APP_BACKEND_URL anywhere).
+- backend/main.py mounts `StaticFiles(directory='../frontend/dist', html=True)` at "/" AFTER all API routes — single container serves both the API and the UI.
+- /app/frontend/package.json kept as a thin supervisor shim: `yarn start` -> `python3 -m http.server 3000 --directory dist`. Zero Node deps; supervisor still happy in dev.
+- NEW: /app/k8s/{deployment.yaml,service.yaml,README.md} — single Deployment, single container, /health + /ready probes, ClusterIP svc 80→8001, default env points at an in-cluster openai_compatible LLM gateway (air-gapped).
+- README rewritten: single uvicorn command for local dev (Windows + macOS), Optional static-server section, K8s deploy section.
+- Env fixups (unrelated to migration, but blocking startup): bumped pydantic to >=2.13 to match installed pydantic_core 2.46.x; reinstalled magika~=0.6.1, defusedxml, markdownify, docstring-parser, starlette>=0.40,<0.42.
+- VERIFIED (iteration_7.json): 22/22 new pytest backend regression suite PASS (test_vanilla_frontend_integration.py), all Playwright UI flows GREEN — token mint, source/mode/output tab toggles, sync S3 extraction, async polling PENDING→COMPLETED, docs view rendering PRD/TRD/APP_FLOW. Single-container `curl http://localhost:8001/` returns index.html and `/api/health` returns 200 from the SAME port; preview ingress also routes `/` to :3000 static and `/api/*` to :8001.
