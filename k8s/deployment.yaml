@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: doc-intel
+  labels:
+    app: doc-intel
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: doc-intel
+  template:
+    metadata:
+      labels:
+        app: doc-intel
+    spec:
+      # Single-container architecture:
+      #  - FastAPI serves the API at /api/*
+      #  - FastAPI also serves the vanilla HTML UI at / (via StaticFiles)
+      #  No separate frontend pod / no Node.js runtime needed.
+      containers:
+        - name: app
+          image: doc-intel:latest          # <-- replace with your registry image
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8001
+              protocol: TCP
+          # ---- App configuration --------------------------------------------------
+          env:
+            # LLM provider — air-gapped default. Override per env.
+            - name: LLM_PROVIDER
+              value: "openai_compatible"
+            - name: OPENAI_BASE_URL
+              value: "http://llm-gateway.internal/v1"
+            - name: OPENAI_MODEL
+              value: "llama3.1"
+            - name: OPENAI_API_KEY
+              value: "not-needed"
+            # Mock S3 keeps the demo runnable without AWS credentials.
+            - name: USE_MOCK_S3
+              value: "true"
+            # Job store — swap to PostgreSQL by changing DATABASE_URL.
+            - name: DATABASE_URL
+              value: "sqlite+aiosqlite:///./jobs.db"
+          # ---- Probes -------------------------------------------------------------
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # ---- Resources ----------------------------------------------------------
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          # ---- Filesystem ---------------------------------------------------------
+          # SQLite + temp files need a writable working dir. For multi-replica,
+          # mount a PVC at /data and set DATABASE_URL=sqlite+aiosqlite:///data/jobs.db
+          # (or switch to PostgreSQL entirely).
+          volumeMounts:
+            - name: scratch
+              mountPath: /app/backend/tmp
+      volumes:
+        - name: scratch
+          emptyDir: {}

@@ -1,70 +1,58 @@
-# Getting Started with Create React App
+# Frontend — Vanilla HTML / CSS / JS
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+This directory contains the **dependency-free** Document Intelligence Console.
 
-## Available Scripts
+## Why vanilla?
 
-In the project directory, you can run:
+The platform is designed to run in **fully air-gapped Kubernetes clusters**.
+A vanilla static frontend means:
 
-### `npm start`
+- **Zero npm / yarn / Node.js requirement** for deployment.
+- **Zero external CDNs / Google Fonts / web sockets** — works behind the strictest egress rules.
+- **One container** — FastAPI serves both `/api/*` and the static UI at `/`.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+## Layout
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+```
+frontend/
+├── dist/                 # the production static frontend (THIS is what gets served)
+│   ├── index.html
+│   ├── styles.css
+│   └── app.js
+├── legacy-react/         # archived React/CRA app (kept for reference only — not served)
+├── package.json          # thin wrapper so the dev supervisor can `yarn start`
+└── README.md             # this file
+```
 
-### `npm test`
+## How it's served
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+| Mode                       | Who serves the UI                                     |
+|----------------------------|-------------------------------------------------------|
+| Production / Kubernetes    | **FastAPI** itself (`StaticFiles` mount in `main.py`) — single container, port `8001`. |
+| Dev preview / local        | `python3 -m http.server` on port `3000` (via `yarn start` shim or directly). API calls are reverse-proxied or use same-origin relative URLs. |
 
-### `npm run build`
+The vanilla JS uses **same-origin relative URLs** (`fetch('/api/v1/...')`) — there is **no** `REACT_APP_BACKEND_URL` to configure. Just deploy the static files anywhere that proxies `/api/*` to the FastAPI backend, or let FastAPI serve everything.
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## Local development
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### Option A — single container (recommended)
+```bash
+cd backend
+uvicorn main:app --reload --host 0.0.0.0 --port 8001
+# open http://localhost:8001
+```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+### Option B — separate static server
+```bash
+# Terminal 1
+cd backend && uvicorn main:app --reload --port 8001
 
-### `npm run eject`
+# Terminal 2
+cd frontend && python3 -m http.server 3000 --directory dist
+# open http://localhost:3000
+# (set up your reverse-proxy so /api/* goes to :8001, or just use Option A)
+```
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+## Editing the UI
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
-
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Open `dist/index.html`, `dist/styles.css`, `dist/app.js`. No build step, no transpiler — refresh the browser. That's the whole story.

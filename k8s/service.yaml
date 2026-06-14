@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: doc-intel
+  labels:
+    app: doc-intel
+spec:
+  type: ClusterIP
+  selector:
+    app: doc-intel
+  ports:
+    # Single port — FastAPI serves both the API (/api/*) and the UI (/) here.
+    - name: http
+      port: 80
+      targetPort: 8001
+      protocol: TCP

@@ -12,6 +12,12 @@ Gemini, native Claude, or any **OpenAI-compatible** endpoint (vLLM / Ollama / TG
 / LiteLLM / corporate gateway) with a single env var and **no external proxy
 dependency**, so it runs fully **air-gapped**.
 
+The UI is a **dependency-free vanilla HTML / CSS / JS** console, served by the
+same FastAPI container — **no Node.js, no yarn, no build step** required in
+production.
+
+---
+
 ### "Omniparse" — extract from (almost) any file, incl. images & German IDs
 - **Office/text:** PDF, DOCX, PPTX, XLS/XLSX, MSG (Outlook), TXT, MD, HTML, CSV, JSON (MarkItDown).
 - **Images & scanned PDFs:** JPG/JPEG, PNG, TIFF, BMP, WEBP, GIF, **HEIC/HEIF** — via **offline Tesseract OCR** (`deu`+`eng`, fully air-gapped). Scanned/image-only PDFs are auto-detected (no text layer) and rasterized page-by-page with PDFium (`pypdfium2`), then OCR'd.
@@ -22,7 +28,8 @@ dependency**, so it runs fully **air-gapped**.
 
 It ships with SYNC + ASYNC extraction modes, mock OIDC/JWT auth + RBAC,
 end-to-end `correlationId` tracing, RFC 7807 error responses, Kubernetes
-health/ready probes, and a React **demo console** for showing the flow to your team.
+health/ready probes, and a vanilla HTML **demo console** for showing the flow
+to your team.
 
 ---
 
@@ -30,7 +37,7 @@ health/ready probes, and a React **demo console** for showing the flow to your t
 
 ```
 backend/
-├── main.py                      # FastAPI bootstrap, middleware, health/ready, routers
+├── main.py                      # FastAPI bootstrap + StaticFiles mount (serves the UI at /)
 ├── server.py                    # entrypoint shim (re-exports app from main)
 ├── core/
 │   ├── config.py                # pydantic-settings (type-safe env vars)
@@ -44,17 +51,29 @@ backend/
 │   ├── extraction_pipeline.py   # Ingestion → MarkItDown → Chunking → LLM (tenacity retries)
 │   └── job_repository.py        # async SQLAlchemy repository (SQLite → swap to Postgres)
 └── requirements.txt
-frontend/                        # React demo console (Vite-style CRA)
+frontend/
+├── dist/                        # vanilla HTML/CSS/JS UI — served by FastAPI's StaticFiles
+│   ├── index.html
+│   ├── styles.css
+│   └── app.js                   # all logic, uses RELATIVE /api/* URLs (same origin)
+├── legacy-react/                # archived old React/CRA app (reference only)
+├── package.json                 # thin dev wrapper (yarn start → python http.server)
+└── README.md
+k8s/
+├── deployment.yaml              # single-container deployment (FastAPI serves API + UI)
+└── service.yaml                 # ClusterIP service on port 80 → pod 8001
 ```
 
 ### Key endpoints
 
 | Method | Path                        | Purpose                                            |
 |--------|-----------------------------|----------------------------------------------------|
+| GET    | `/`                         | Vanilla HTML console (served from `frontend/dist`) |
 | POST   | `/api/v1/auth/token`        | Mint a mock OIDC bearer token (demo)               |
 | POST   | `/api/v1/extract/sync`      | Synchronous extraction (small docs)                |
 | POST   | `/api/v1/extract/async`     | Enqueue job → `202 Accepted` + `jobId` (+callback) |
 | GET    | `/api/v1/jobs/{jobId}`      | Poll async job status + result                     |
+| GET    | `/api/v1/documents`         | List + fetch PRD/TRD/App-Flow markdown docs        |
 | GET    | `/health`, `/ready`         | Kubernetes liveness / readiness probes             |
 | GET    | `/api/health`, `/api/ready` | Same probes, reachable through the ingress         |
 | GET    | `/docs`                     | Swagger / OpenAPI UI                               |
@@ -86,11 +105,9 @@ It is echoed back on the response and stamped on every structured log line.
 > | `gemini`             | Local testing — native Gemini    | `GEMINI_API_KEY`, `GEMINI_MODEL` (+ optional `GEMINI_BASE_URL`)   |
 > | `anthropic`          | Local testing — native Claude    | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` (+ optional `ANTHROPIC_BASE_URL`) |
 >
-> There is **no Emergent/Universal-Key/SaaS proxy** — every provider talks
-> directly to the vendor SDK using your own key/endpoint. If the selected
-> provider has no key/endpoint configured (or `USE_MOCK_LLM=true`), the pipeline
-> transparently falls back to a **deterministic mock extractor** so the demo
-> always works offline. `USE_MOCK_S3=true` already stubs S3 so no AWS is needed.
+> If the selected provider has no key/endpoint configured (or `USE_MOCK_LLM=true`)
+> the pipeline transparently falls back to a **deterministic mock extractor**.
+> `USE_MOCK_S3=true` already stubs S3 so no AWS is needed.
 >
 > **Air-gapped example** (point at a local Ollama):
 > ```
@@ -99,70 +116,77 @@ It is echoed back on the response and stamped on every structured log line.
 > OPENAI_MODEL=llama3.1
 > OPENAI_API_KEY=not-needed        # required by the SDK, ignored by the server
 > ```
-> **Local testing with Gemini / Claude** — set `LLM_PROVIDER=gemini` (or
-> `anthropic`) and paste your own key into `GEMINI_API_KEY` / `ANTHROPIC_API_KEY`.
 
 ### Prerequisites
-- **Python 3.10+** and **Node.js 18+** with **Yarn**
+- **Python 3.10+** — that's it for production. **No Node.js / yarn required.**
 - **Tesseract OCR + German language data** (for image/scanned-doc extraction):
   - **macOS:** `brew install tesseract tesseract-lang` (includes `deu`)
   - **Debian/Ubuntu:** `sudo apt-get install -y tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng`
-  - **Windows:** install the UB-Mannheim Tesseract build, tick **German** during setup, and add it to `PATH` (or set `pytesseract.pytesseract.tesseract_cmd`). Verify with `tesseract --list-langs` (should list `deu eng`).
+  - **Windows:** install the UB-Mannheim Tesseract build, tick **German** during
+    setup, and add it to `PATH` (or set `pytesseract.pytesseract.tesseract_cmd`).
+    Verify with `tesseract --list-langs` (should list `deu eng`).
 
 ---
 
-### macOS / Linux
+### macOS / Linux — single command (recommended)
 
-**1. Backend**
+The FastAPI server now **serves the vanilla UI directly**, so there is no
+separate frontend process:
+
 ```bash
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-
-# .env is already provided. Default LLM_PROVIDER=gemini (falls back to mock if no key).
-# Air-gapped: set LLM_PROVIDER=openai_compatible + OPENAI_BASE_URL to your internal endpoint.
-
 uvicorn main:app --reload --host 0.0.0.0 --port 8001
 ```
-Backend is now at http://localhost:8001 — open http://localhost:8001/docs
 
-**2. Frontend** (new terminal)
-```bash
-cd frontend
-# Point the UI at your local backend:
-echo "REACT_APP_BACKEND_URL=http://localhost:8001" > .env
-yarn install
-yarn start
-```
-Open http://localhost:3000
+Open **http://localhost:8001** — that's both the console and the API.
+Swagger lives at **http://localhost:8001/docs**.
+
+> ### Want to edit the UI?
+> Open `frontend/dist/index.html`, `frontend/dist/styles.css`,
+> `frontend/dist/app.js` — refresh the browser, that's it. No bundler.
 
 ---
 
-### Windows (PowerShell)
+### Windows (PowerShell) — single command
 
-**1. Backend**
 ```powershell
 cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-
-# (Optional) air-gapped: set LLM_PROVIDER=openai_compatible in .env
-
 uvicorn main:app --reload --host 0.0.0.0 --port 8001
 ```
+
 > If `Activate.ps1` is blocked, run once:
 > `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`
 
-**2. Frontend** (new PowerShell window)
-```powershell
+Open **http://localhost:8001** in your browser.
+
+#### Windows quirk: PDF rasterization
+We use **pypdfium2** (PDFium wheel — no external binaries, no AGPL) for scanned
+PDFs. Earlier PyMuPDF/`fitz` builds crashed on uvicorn shutdown on Windows; if
+you ever see a `fz_set_warning_callback` error in the log, make sure
+`requirements.txt` pins `pypdfium2>=4.30` (it does by default).
+
+---
+
+### Optional — run the UI on a separate port
+
+If you'd rather decouple the UI from the API process (e.g. behind a CDN), the
+`frontend/` directory works as **plain static files** — serve them with any
+HTTP server. We ship a convenience script:
+
+```bash
 cd frontend
-Set-Content .env "REACT_APP_BACKEND_URL=http://localhost:8001"
-yarn install
-yarn start
+python3 -m http.server 3000 --directory dist
+# (or: yarn start  — which just calls the line above)
 ```
-Open http://localhost:3000
+
+The UI uses **relative URLs** for every API call, so just make sure your
+ingress / reverse-proxy forwards `/api/*` to the FastAPI pod on port `8001`.
 
 ---
 
@@ -205,6 +229,43 @@ curl -s $BASE/api/v1/jobs/$JOB -H "Authorization: Bearer $TOKEN"
 
 ---
 
+## Kubernetes deployment (single container, air-gapped)
+
+The platform ships as one container that serves **both** the API and the UI.
+A minimal manifest set lives in `k8s/`:
+
+```bash
+# 1. Build an image (any registry works; the Dockerfile is optional — use yours).
+#    Make sure the image includes both `backend/` and `frontend/dist/`.
+
+# 2. Apply the manifests:
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
+
+# 3. Expose via your existing Ingress / Service mesh, or port-forward to test:
+kubectl port-forward svc/doc-intel 8080:80
+# → open http://localhost:8080
+```
+
+Configure the LLM via env vars in `k8s/deployment.yaml`:
+
+```yaml
+env:
+  - name: LLM_PROVIDER
+    value: openai_compatible              # air-gapped path
+  - name: OPENAI_BASE_URL
+    value: http://llm-gateway.internal/v1
+  - name: OPENAI_MODEL
+    value: llama3.1
+  - name: OPENAI_API_KEY
+    value: not-needed
+  - name: USE_MOCK_S3
+    value: "true"
+```
+
+The deployment uses `/health` for **liveness** and `/ready` for **readiness**.
+Both are reachable without auth on the pod.
+
 ---
 
 ## Running the tests
@@ -213,7 +274,7 @@ Test/dev dependencies are kept separate from the runtime requirements:
 cd backend
 pip install -r requirements.txt -r requirements-dev.txt   # pytest, requests, reportlab, python-docx
 # point the suite at a running backend (local or preview):
-REACT_APP_BACKEND_URL=http://localhost:8001 pytest tests/ -v
+BACKEND_URL=http://localhost:8001 pytest tests/ -v
 ```
 (The API tests hit a live server, so make sure the backend is running first.)
 

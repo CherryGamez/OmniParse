@@ -14,11 +14,13 @@ import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -181,3 +183,19 @@ async def api_ready() -> ReadyResponse:
 
 
 app.include_router(api_router)
+
+
+# ---------------------------------------------------------------------------
+# Static frontend (single-container deployment)
+#
+# The vanilla HTML/JS/CSS console lives in ../frontend/dist/. Mounting it at
+# "/" lets one container serve BOTH the API (everything above) and the UI.
+# `html=True` makes StaticFiles fall back to index.html for unknown sub-paths.
+# Mounted LAST so API routes win all collisions.
+# ---------------------------------------------------------------------------
+_STATIC_DIR = Path(__file__).resolve().parents[1] / "frontend" / "dist"
+if _STATIC_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=_STATIC_DIR, html=True), name="static-ui")
+    logger.info("Static frontend mounted at '/' from %s", _STATIC_DIR)
+else:
+    logger.warning("Static frontend dir not found at %s - UI will not be served.", _STATIC_DIR)
