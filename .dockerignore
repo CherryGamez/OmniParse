@@ -48,5 +48,7 @@ documents/PRD.md.bak
 **/.DS_Store
 **/Thumbs.db
 build
-dist
+# Note: we intentionally do NOT ignore "dist" wholesale — frontend/dist IS the
+# production UI and MUST end up in the image. legacy-react/build is already
+# excluded via the `frontend/legacy-react` rule above.
 *.log

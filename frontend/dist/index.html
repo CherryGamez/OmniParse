@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#111111" />
+    <meta
+      name="description"
+      content="Enterprise Document Intelligence Platform — convert documents to structured JSON."
+    />
+    <title>Document Intelligence Console</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <noscript>This console requires JavaScript.</noscript>
+
+    <div class="app">
+      <!-- ============================================================== -->
+      <!-- HEADER                                                          -->
+      <!-- ============================================================== -->
+      <header class="app-header">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter">
+              <polyline points="4 17 10 11 4 5"></polyline>
+              <line x1="12" y1="19" x2="20" y2="19"></line>
+            </svg>
+          </div>
+          <div class="brand-text">
+            <h1>DOCUMENT INTELLIGENCE</h1>
+            <span class="uppercase-label muted">Extraction Console / v1</span>
+          </div>
+        </div>
+
+        <nav class="seg-tabs" data-testid="main-nav" role="tablist">
+          <button class="seg-tab active" data-view="console" data-testid="nav-console" type="button" role="tab" aria-selected="true">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+            Console
+          </button>
+          <button class="seg-tab" data-view="docs" data-testid="nav-docs" type="button" role="tab" aria-selected="false">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+            Docs
+          </button>
+        </nav>
+
+        <div class="ops-badges" data-testid="ops-badges">
+          <span class="badge idle" data-testid="health-badge">
+            <span class="dot"></span><span>Health</span>
+          </span>
+          <span class="badge idle" data-testid="ready-badge">
+            <span class="dot"></span><span>Ready</span>
+          </span>
+        </div>
+      </header>
+
+      <!-- ============================================================== -->
+      <!-- CONSOLE VIEW                                                    -->
+      <!-- ============================================================== -->
+      <main id="view-console" class="view view-console" role="tabpanel">
+        <!-- LEFT: Input panel -->
+        <section class="panel panel-input">
+          <!-- Auth -->
+          <div class="panel-block">
+            <div class="block-head">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="16" r="1"></circle><rect x="3" y="10" width="18" height="12" rx="2"></rect><path d="M7 10V7a5 5 0 0 1 10 0v3"></path></svg>
+              <span class="uppercase-label">Mock OIDC Token</span>
+            </div>
+            <textarea id="jwt-input" data-testid="jwt-input" rows="3" class="control mono break-all"></textarea>
+            <button id="mint-token-btn" data-testid="mint-token-btn" class="btn btn-ghost full" type="button">
+              Re-mint Demo Token
+            </button>
+          </div>
+
+          <!-- Source -->
+          <div class="panel-block">
+            <span class="uppercase-label block-label">Document Source</span>
+            <div class="seg-tabs" data-testid="source-tabs">
+              <button class="seg-tab active" data-source="upload" data-testid="source-tab-upload" type="button">File Upload</button>
+              <button class="seg-tab" data-source="s3" data-testid="source-tab-s3" type="button">S3 URI</button>
+            </div>
+
+            <label id="upload-dropzone" data-testid="upload-dropzone" class="dropzone">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path><polyline points="12 12 12 21"></polyline><polyline points="16 16 12 12 8 16"></polyline></svg>
+              <span id="upload-filename" class="mono small muted">
+                Drop PDF / image (JPG, PNG, HEIC, AVIF) / DOCX / scan or click
+              </span>
+              <input
+                id="file-input"
+                data-testid="file-input"
+                type="file"
+                hidden
+                accept=".pdf,.docx,.pptx,.xls,.xlsx,.msg,.txt,.md,.html,.csv,.json,.jpg,.jpeg,.png,.tif,.tiff,.bmp,.webp,.gif,.heic,.heif,.avif"
+              />
+            </label>
+
+            <input
+              id="s3-uri-input"
+              data-testid="s3-uri-input"
+              class="control mono hidden"
+              placeholder="s3://bucket/key.pdf"
+              value="s3://demo-bucket/contracts/invoice-001.pdf"
+            />
+          </div>
+
+          <!-- Instructions -->
+          <div class="panel-block">
+            <span class="uppercase-label block-label">Extraction Instructions</span>
+            <textarea
+              id="instructions-input"
+              data-testid="instructions-input"
+              rows="3"
+              class="control mono"
+            >Extract document type, all header fields, line items and totals.</textarea>
+          </div>
+
+          <!-- Mode -->
+          <div class="panel-block">
+            <span class="uppercase-label block-label">Extraction Mode</span>
+            <div class="seg-tabs" data-testid="mode-tabs">
+              <button class="seg-tab active" data-mode="sync" data-testid="mode-sync" type="button">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                Sync
+              </button>
+              <button class="seg-tab" data-mode="async" data-testid="mode-async" type="button">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg>
+                Async (202)
+              </button>
+            </div>
+            <input
+              id="callback-url-input"
+              data-testid="callback-url-input"
+              class="control mono hidden"
+              placeholder="callbackUrl (optional, e.g. Camunda)"
+            />
+          </div>
+
+          <!-- Submit -->
+          <div class="panel-block">
+            <button id="extract-btn" data-testid="extract-btn" class="btn btn-primary full" type="button">
+              <svg id="extract-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              <span id="extract-label">Run Extraction</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- RIGHT: Output panel -->
+        <section class="panel panel-output">
+          <div class="meta-strip">
+            <div class="meta-item">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line><line x1="10" y1="3" x2="8" y2="21"></line><line x1="16" y1="3" x2="14" y2="21"></line></svg>
+              <span class="uppercase-label muted">Correlation ID</span>
+              <code id="correlation-id" data-testid="correlation-id" class="chip mono">—</code>
+              <button id="copy-cid" class="icon-btn" type="button" title="Copy" hidden>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              </button>
+            </div>
+
+            <div id="job-meta" class="meta-item" hidden>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"></rect><rect x="2" y="14" width="20" height="8" rx="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+              <span class="uppercase-label muted">Job</span>
+              <code id="job-id" class="mono small"></code>
+              <span class="badge idle" id="job-status-badge" data-testid="job-status-badge">
+                <span class="dot"></span><span id="job-status-label">PENDING</span>
+              </span>
+            </div>
+
+            <div id="result-meta" class="meta-item meta-right" hidden>
+              <span class="badge info hidden" id="ocr-badge" data-testid="ocr-badge">
+                <span class="dot"></span><span id="ocr-badge-label">OCR</span>
+              </span>
+              <span class="badge info" id="model-badge" data-testid="model-badge">
+                <span class="dot"></span><span id="model-badge-label">Model</span>
+              </span>
+              <span class="badge info hidden" id="chunks-badge" data-testid="chunks-badge" title="Number of LLM calls used for this document">
+                <span class="dot"></span><span id="chunks-badge-label">CHUNKS 1</span>
+              </span>
+              <span class="badge ok hidden" id="tokens-badge" data-testid="tokens-badge" title="Estimated tokens used vs tokens saved by skipping vision-LLM-per-page">
+                <span class="dot"></span><span id="tokens-badge-label">TOK 0 · SAVED 0</span>
+              </span>
+              <span id="proc-ms" class="mono small muted"></span>
+            </div>
+          </div>
+
+          <div id="error-panel" data-testid="error-panel" class="error-panel" hidden></div>
+
+          <div class="output-tabs">
+            <button class="tab active" data-output="json" data-testid="output-tab-json" type="button">
+              Structured JSON
+            </button>
+            <button class="tab" data-output="markdown" data-testid="output-tab-markdown" type="button">
+              Markdown (intermediate)
+            </button>
+          </div>
+
+          <div id="output-body" class="output-body"></div>
+        </section>
+      </main>
+
+      <!-- ============================================================== -->
+      <!-- DOCS VIEW                                                       -->
+      <!-- ============================================================== -->
+      <section id="view-docs" class="view view-docs" data-testid="docs-panel" role="tabpanel" hidden>
+        <aside class="docs-sidebar">
+          <span class="uppercase-label muted block-label">Project Documents</span>
+          <div id="docs-nav" class="docs-nav"></div>
+          <p class="docs-hint mono small muted">
+            Served from the repository's <code>documents/</code> folder via
+            <code>GET /api/v1/documents</code> — docs always match the shipped code.
+          </p>
+        </aside>
+        <main class="docs-reader">
+          <div id="docs-error" data-testid="docs-error" class="error-panel" hidden></div>
+          <article id="doc-content" data-testid="doc-content" class="doc-article"></article>
+        </main>
+      </section>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

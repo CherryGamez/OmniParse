@@ -30,6 +30,10 @@ next-env.d.ts
 dist/
 dist
 
+# …but DO ship the vanilla static frontend — it IS the production UI now.
+!/frontend/dist/
+!/frontend/dist/**
+
 # Environment files (comprehensive coverage)
 
 *token.json*
