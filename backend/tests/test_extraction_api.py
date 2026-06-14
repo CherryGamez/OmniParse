@@ -20,7 +20,7 @@ import requests
 
 BASE_URL = os.environ.get(
     "REACT_APP_BACKEND_URL",
-    "https://b711b5fa-1cf6-4ec9-9da8-3816e7e82a22.preview.emergentagent.com",
+    "https://omniparse-k8s-deploy.preview.emergentagent.com",
 ).rstrip("/")
 
 API = f"{BASE_URL}/api/v1"
