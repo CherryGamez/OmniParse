@@ -133,6 +133,7 @@ _DOC_FILES: dict[str, tuple[str, str]] = {
     "prd": ("PRD.md", "Product Requirement Document"),
     "trd": ("TRD.md", "Technical Requirement Document"),
     "app-flow": ("APP_FLOW.md", "App Flow Document"),
+    "benefits": ("BENEFITS.md", "Benefits & Token Economics"),
 }
 
 

@@ -84,6 +84,21 @@ class ExtractionResult(BaseModel):
         default=None, description="OCR engine/languages used (e.g. 'tesseract:deu+eng')."
     )
     processingMs: int = Field(description="End-to-end pipeline processing time in milliseconds.")
+    tokensEstimate: int = Field(
+        default=0,
+        description=(
+            "Estimated total tokens (input + output) actually consumed by the LLM "
+            "for this extraction. Computed deterministically as char-count / 4."
+        ),
+    )
+    tokensSavedVsRaw: int = Field(
+        default=0,
+        description=(
+            "Estimated tokens SAVED vs. sending the raw document straight to a "
+            "vision-LLM (≈1100 input tokens per scanned page). The savings come "
+            "from the deterministic MarkItDown / Tesseract pre-processing step."
+        ),
+    )
 
 
 class SyncExtractResponse(BaseModel):

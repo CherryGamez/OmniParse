@@ -98,9 +98,9 @@ class TestDocuments:
         r = requests.get(BASE + "/api/v1/documents", timeout=10)
         assert r.status_code == 200
         ids = sorted(d["id"] for d in r.json())
-        assert ids == ["app-flow", "prd", "trd"]
+        assert ids == ["app-flow", "benefits", "prd", "trd"]
 
-    @pytest.mark.parametrize("doc_id", ["prd", "trd", "app-flow"])
+    @pytest.mark.parametrize("doc_id", ["prd", "trd", "app-flow", "benefits"])
     def test_get_doc(self, doc_id):
         r = requests.get(BASE + f"/api/v1/documents/{doc_id}", timeout=10)
         assert r.status_code == 200
@@ -108,6 +108,10 @@ class TestDocuments:
         assert body["id"] == doc_id
         assert "#" in body["content"]
         assert len(body["content"]) > 200
+        if doc_id == "benefits":
+            # New iteration: BENEFITS.md is the token-economics doc.
+            assert len(body["content"]) > 2000
+            assert "token" in body["content"].lower()
 
     def test_unknown_doc_404(self):
         r = requests.get(BASE + "/api/v1/documents/__bogus__", timeout=10)
@@ -135,6 +139,12 @@ class TestExtraction:
         # correlationId is nested inside result (per current API contract)
         assert d["result"].get("correlationId") == "pytest-sync-1"
         assert d["result"].get("structured") is not None
+        # New iteration: token & chunking observability
+        res = d["result"]
+        assert isinstance(res.get("tokensEstimate"), int) and res["tokensEstimate"] > 0
+        assert isinstance(res.get("tokensSavedVsRaw"), int) and res["tokensSavedVsRaw"] >= 0
+        assert res.get("chunkCount") == 1
+        assert res.get("chunked") is False
 
     def test_async_s3_completes(self, token):
         r = requests.post(
@@ -167,6 +177,11 @@ class TestExtraction:
             time.sleep(1.5)
         assert last is not None and last["status"] == "COMPLETED", f"final={last}"
         assert last.get("result") is not None
+        # New iteration: result carries token & chunking observability
+        res = last["result"]
+        assert isinstance(res.get("tokensEstimate"), int) and res["tokensEstimate"] > 0
+        assert isinstance(res.get("tokensSavedVsRaw"), int) and res["tokensSavedVsRaw"] >= 0
+        assert res.get("chunkCount") == 1
 
 
 # --- Auth enforcement ---

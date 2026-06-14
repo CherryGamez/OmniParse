@@ -204,24 +204,133 @@ class MarkdownConversionService:
 # ---------------------------------------------------------------------------
 # 3. Chunking (optional middleware)
 # ---------------------------------------------------------------------------
+# Heading-aware Markdown splitter — keeps each chunk under ``chunk_size`` chars
+# while preferring to cut on `##`/`#` boundaries (so a chunk is a self-contained
+# section the LLM can reason about) and falling back to paragraph splits when
+# a single section is itself too large.
+_HEADING_RE = re.compile(r"^(#{1,3})\s+.*$", re.MULTILINE)
+
+
 class ChunkingService:
-    """Split large Markdown into smaller, paragraph-aligned chunks."""
+    """Split large Markdown into smaller, structure-aware chunks with overlap.
+
+    Why it matters:
+      * Keeps every LLM call under the model's context window deterministically.
+      * Cutting on headings (not arbitrary char offsets) preserves the local
+        context the model needs to extract a table or invoice row correctly.
+      * A small character overlap between consecutive chunks prevents a single
+        line item or paragraph from being silently truncated at a boundary.
+      * Each chunk is sent in its OWN LLM call, so input tokens scale O(N) with
+        document length (no quadratic re-prompting) and partial failures are
+        retried independently.
+    """
 
     def chunk(self, markdown: str) -> list[str]:
+        """Return one or more Markdown chunks suitable for downstream LLM calls."""
         if len(markdown) <= settings.chunk_char_threshold:
             return [markdown]
 
+        max_chars = settings.chunk_size
+        overlap = max(0, min(settings.chunk_overlap, max_chars // 4))
+
+        # First, split the document into heading-bounded SECTIONS so we don't
+        # cut tables/lists in half. Falls back to one big section when there
+        # are no headings.
+        sections = self._split_on_headings(markdown)
+
         chunks: list[str] = []
         current = ""
-        for paragraph in markdown.split("\n\n"):
-            if current and len(current) + len(paragraph) + 2 > settings.chunk_size:
-                chunks.append(current)
+        for section in sections:
+            # A single section can itself exceed `chunk_size` (e.g. a giant
+            # table). In that case split it again on paragraph boundaries.
+            pieces = self._split_section(section, max_chars)
+            for piece in pieces:
+                if current and len(current) + len(piece) + 2 > max_chars:
+                    chunks.append(current)
+                    # Carry the tail of the previous chunk into the next so the
+                    # LLM doesn't lose context at a boundary.
+                    tail = current[-overlap:] if overlap else ""
+                    current = (tail + "\n\n" + piece).strip() if tail else piece
+                else:
+                    current = f"{current}\n\n{piece}" if current else piece
+        if current:
+            chunks.append(current)
+        return chunks
+
+    @staticmethod
+    def _split_on_headings(markdown: str) -> list[str]:
+        """Split a Markdown doc into heading-bounded sections (preserving the heading)."""
+        starts = [m.start() for m in _HEADING_RE.finditer(markdown)]
+        if not starts:
+            return [markdown]
+        # Include any preamble before the first heading.
+        if starts[0] > 0:
+            starts = [0] + starts
+        starts.append(len(markdown))
+        sections: list[str] = []
+        for i in range(len(starts) - 1):
+            section = markdown[starts[i] : starts[i + 1]].strip()
+            if section:
+                sections.append(section)
+        return sections
+
+    @staticmethod
+    def _split_section(section: str, max_chars: int) -> list[str]:
+        """Break an oversized section on blank-line paragraph boundaries."""
+        if len(section) <= max_chars:
+            return [section]
+        pieces: list[str] = []
+        current = ""
+        for paragraph in section.split("\n\n"):
+            if current and len(current) + len(paragraph) + 2 > max_chars:
+                pieces.append(current)
                 current = paragraph
             else:
                 current = f"{current}\n\n{paragraph}" if current else paragraph
         if current:
-            chunks.append(current)
-        return chunks
+            pieces.append(current)
+        return pieces
+
+
+# Approximate tokens-per-character ratio used for the observability fields.
+# (Empirical: tiktoken/cl100k averages ~3.6-4.2 chars per token across English
+# + German business docs. We use 4 for a conservative, predictable estimate.)
+_CHARS_PER_TOKEN = 4
+
+
+def _estimate_tokens(text: str) -> int:
+    return (len(text) + _CHARS_PER_TOKEN - 1) // _CHARS_PER_TOKEN if text else 0
+
+
+def _merge_chunked_structured(partials: list[Any]) -> Any:
+    """Merge per-chunk JSON outputs into a single structured object.
+
+    Strategy: when every partial is a dict, merge keys; same-name lists are
+    concatenated, same-name dicts deep-merged, scalars are kept from the first
+    chunk that supplied a non-empty value (later chunks won't override header
+    fields like invoiceNumber). When merging is impossible we fall back to the
+    legacy ``{"documentChunks": [...]}`` shape so nothing is lost.
+    """
+    if not partials:
+        return {}
+    if len(partials) == 1:
+        return partials[0]
+    if not all(isinstance(p, dict) for p in partials):
+        return {"documentChunks": partials}
+
+    merged: dict[str, Any] = {}
+    for partial in partials:
+        for key, value in partial.items():
+            if key not in merged or merged[key] in (None, "", [], {}):
+                merged[key] = value
+                continue
+            existing = merged[key]
+            if isinstance(existing, list) and isinstance(value, list):
+                existing.extend(value)
+            elif isinstance(existing, dict) and isinstance(value, dict):
+                existing.update({k: v for k, v in value.items() if k not in existing})
+            # else: keep the first non-empty value, ignore later overrides.
+    return merged
 
 
 # ---------------------------------------------------------------------------
@@ -590,7 +699,12 @@ class ExtractionPipeline:
     async def _extract_structured(
         self, chunks: list[str], instructions: Optional[str], correlation_id: str
     ) -> tuple[Any, bool]:
-        """Run text LLM extraction over one or more chunks."""
+        """Run text LLM extraction over one or more chunks.
+
+        Multi-chunk runs are merged into a single coherent object (see
+        ``_merge_chunked_structured``). Per-chunk failures still surface via
+        the retry/raise behaviour of ``LLMExtractionService.extract``.
+        """
         if len(chunks) == 1:
             return await self.extractor.extract(chunks[0], instructions, correlation_id)
 
@@ -601,7 +715,7 @@ class ExtractionPipeline:
                 chunk, instructions, f"{correlation_id}-{index}"
             )
             partials.append(partial)
-        return {"documentChunks": partials}, used_mock
+        return _merge_chunked_structured(partials), used_mock
 
     async def run(
         self,
@@ -667,6 +781,34 @@ class ExtractionPipeline:
             chunks = [markdown]
 
         elapsed_ms = int((time.perf_counter() - start) * 1000)
+
+        # ----- Token / cost observability -------------------------------------
+        # We can't ask the model for an exact token count without paying for an
+        # extra round-trip; instead we report a deterministic *estimate* based
+        # on the well-known ~4-chars-per-token heuristic (cl100k average). Two
+        # numbers are returned:
+        #
+        #   tokensEstimate   = input + output tokens actually sent/received.
+        #   tokensSavedVsRaw = what you would have paid if you'd sent the raw
+        #                      document straight to a vision LLM (a typical
+        #                      page of a scanned PDF costs ~1100 input tokens
+        #                      JUST for the image, regardless of length).
+        #
+        # The savings come from the deterministic MarkItDown / Tesseract step,
+        # which converts the document for FREE before the LLM ever sees it.
+        structured_str = (
+            json.dumps(structured, ensure_ascii=False) if structured is not None else ""
+        )
+        input_tokens = _estimate_tokens(markdown)
+        output_tokens = _estimate_tokens(structured_str)
+        # Conservative baseline: vision-LLM-per-page is ~1100 tokens of input
+        # per page (1024px tile) + the same JSON output. We approximate "pages"
+        # from char count (3500 chars ≈ 1 page) with a 1-page minimum so even
+        # tiny docs reflect the vision-API floor.
+        estimated_pages = max(1, len(markdown) // 3500)
+        raw_input_tokens = 1100 * estimated_pages
+        tokens_saved = max(0, raw_input_tokens - input_tokens)
+
         logger.info(
             "Extraction pipeline completed",
             extra={
@@ -677,6 +819,8 @@ class ExtractionPipeline:
                     "ocrUsed": ocr_used,
                     "ocrEngine": ocr_engine,
                     "processingMs": elapsed_ms,
+                    "tokensEstimate": input_tokens + output_tokens,
+                    "tokensSavedVsRaw": tokens_saved,
                 }
             },
         )
@@ -695,6 +839,8 @@ class ExtractionPipeline:
             "ocrUsed": ocr_used,
             "ocrEngine": ocr_engine,
             "processingMs": elapsed_ms,
+            "tokensEstimate": input_tokens + output_tokens,
+            "tokensSavedVsRaw": tokens_saved,
         }
 
 

@@ -1,0 +1,52 @@
+# ============================================================================
+#  Keep the Docker build context lean — exclude everything that isn't needed
+#  in the final image. Saves both build time and final image size.
+# ============================================================================
+
+# Version control & IDE
+.git
+.gitignore
+.gitattributes
+.github
+.vscode
+.idea
+.emergent
+
+# Legacy / archived sources (NOT served)
+frontend/legacy-react
+frontend/node_modules
+frontend/yarn.lock
+frontend/package.json
+frontend/README.md
+frontend/.env
+
+# Python virtualenvs and caches
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+backend/.venv
+backend/venv
+.venv
+
+# Local databases and tmp artefacts
+backend/jobs.db
+backend/tmp
+backend/tests
+backend/requirements-dev.txt
+
+# Memory / planning / test outputs
+memory
+test_reports
+test_result.md
+tests
+documents/PRD.md.bak
+
+# Build outputs / OS junk
+**/.DS_Store
+**/Thumbs.db
+build
+dist
+*.log

@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     max_sync_file_mb: int = 5
     chunk_char_threshold: int = 12000
     chunk_size: int = 8000
+    chunk_overlap: int = 400  # chars carried into the next chunk for context
 
     # ---- OCR (offline / air-gapped) ------------------------------------------
     ocr_enabled: bool = True

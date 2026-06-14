@@ -1,0 +1,51 @@
+{
+  "summary": "Iteration 8 end-to-end verification of: (a) chunking + token-economics observability fields surfaced on every extraction result, (b) new BENEFITS.md registered as a 4th in-app doc, (c) frontend badges (tokens-badge, chunks-badge) and the docs nav for `benefits`, (d) static-container regression on direct backend + preview, (e) Dockerfile + .dockerignore static validation. Full GREEN: 35/35 pytest pass (12 chunking + 23 integration) and all Playwright flows green. Sync S3 extraction returned tokensEstimate=334, tokensSavedVsRaw=938, chunkCount=1, chunked=false, model=openai:gpt-4o. Async S3 round-trip COMPLETED with identical fields on result. UI shows 'TOK 334 · SAVED 938' label and the chunks-badge correctly stays hidden for the single-chunk mock invoice. Benefits doc renders 6580 chars of markdown including 3 <table> elements and contains both 'tokens' and 'air-gapped'.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_chunking_and_tokens.py",
+    "/app/backend/tests/test_vanilla_frontend_integration.py",
+    "/app/test_reports/pytest/iter8_results.xml"
+  ],
+  "tests_executed": {
+    "backend_pytest": "35 collected, 35 PASS in 9.41s. test_chunking_and_tokens.py = 12/12 (ChunkingService: short doc -> single chunk, long-doc heading-aware multi-chunk, chunk-size respects 8000+overlap budget; _merge_chunked_structured: single passthrough, list concat, deep dict merge, scalar first-non-empty wins, non-dict fallback to documentChunks; _estimate_tokens: parametrized over 0/1/2/3000 token targets). test_vanilla_frontend_integration.py = 23/23 (static container on / + /app.js + /styles.css from both preview AND localhost, /api/health + /health + /api/ready + /ready, auth token mint, docs list returns 4 entries [app-flow, benefits, prd, trd], each doc returns content >200 chars with '#', benefits >2000 chars and contains 'token', sync extract returns tokensEstimate>0/tokensSavedVsRaw>=0/chunkCount=1/chunked=False, async extract polled to COMPLETED with same observability fields, missing-token returns 401/403).",
+    "frontend_playwright": [
+      "App boots; jwt-input auto-populated (mock JWT).",
+      "Source=S3 + Mode=Sync (data-testid='mode-sync'). S3 URI s3://demo-bucket/contracts/invoice-001.pdf submitted via [data-testid=extract-btn].",
+      "[data-testid=tokens-badge] becomes visible (hidden class removed); #tokens-badge-label text == 'TOK 334 · SAVED 938' (matches required regex).",
+      "[data-testid=model-badge] = 'openai:gpt-4o' (live LLM, not mock mode).",
+      "[data-testid=chunks-badge] retains 'hidden' class -> not visible (single chunk mock invoice).",
+      "nav-docs reveals docs-panel; [data-testid=doc-nav-benefits] present and clickable; doc-content renders 6580 chars of markdown containing 'tokens', 'air-gapped' and 3 <table> elements."
+    ],
+    "static_container_curl": [
+      "localhost:8001/, /styles.css, /app.js, /api/health, /api/v1/documents -> all 200",
+      "preview/, /styles.css, /app.js, /api/health, /api/v1/documents -> all 200",
+      "GET /api/v1/documents returns 4 entries: prd, trd, app-flow, benefits (in that listed order)",
+      "GET /api/v1/documents/benefits -> 200, 7808 chars, 16 'token' occurrences"
+    ],
+    "docker_static_validation": [
+      "/app/Dockerfile exists: multi-stage python:3.11-slim builder -> runtime; COPY backend/, frontend/dist/, documents/; EXPOSE 8001; HEALTHCHECK on /health; USER app (non-root); CMD uvicorn main:app --port 8001; runtime apt: tesseract-ocr + deu + eng + libgl1 + libglib2.0-0 + curl.",
+      "/app/.dockerignore exists and excludes frontend/legacy-react, frontend/node_modules, memory, test_reports, backend/tests, __pycache__, .venv, *.log, build, dist, .DS_Store etc."
+    ]
+  },
+  "action_items": [],
+  "critical_code_review_comments": [
+    "ExtractionPipeline.run() now also writes tokensEstimate (chars/4) and tokensSavedVsRaw (= max(0, vision_baseline - actual)); both are deterministic and require zero extra LLM round-trips — correct design for an SLA dashboard.",
+    "ChunkingService is heading-aware (preserves '## Section' as chunk boundary) with a 400-char overlap so cross-chunk context for line items is not lost; verified by the heading-presence assertion in test_long_doc_with_headings_produces_multiple_chunks.",
+    "_merge_chunked_structured handles three shapes correctly: list-concat (lineItems), deep dict-merge (header sub-fields), scalar first-non-empty wins (invoiceNumber). Falls back to {documentChunks:[...]} only when partials are not dicts — robust to LLM shape drift.",
+    "Frontend renderResultMeta() in app.js correctly toggles 'hidden' class on chunks-badge (only when chunkCount>1) and always updates tokens-badge label with thousands separators — verified live: 'TOK 334 · SAVED 938'.",
+    "Markdown renderer in app.js handles GitHub-style tables (3 tables in BENEFITS.md rendered as proper <table> elements). XSS-safe (textContent only).",
+    "Dockerfile build context will be small thanks to .dockerignore (legacy-react + node_modules + memory + test_reports excluded). Final runtime stage is non-root, has HEALTHCHECK, exposes :8001 — matches K8s PSP-restricted requirements.",
+    "Static container regression: FastAPI StaticFiles still mounted AFTER routers in main.py so /api/* takes precedence; same-origin contract preserved."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_vanilla_frontend_integration.py (extended: docs list now expects 4 entries incl. benefits; new parametrized doc test covers benefits with len>2000 + 'token' check; sync+async extraction tests now also assert tokensEstimate>0, tokensSavedVsRaw>=0, chunkCount==1, chunked==false)"
+  ],
+  "success_rate": {"backend": "100% (35/35)", "frontend": "100% (all flows incl. tokens-badge + chunks-badge + benefits doc)"},
+  "test_credentials": "No real auth. Mock OIDC token minted via POST /api/v1/auth/token {sub:'tester', roles:['extractor','admin']} -> accessToken (JWT). /app/memory/test_credentials.md still not present, but not required.",
+  "seed_data_creation": "None. All extraction tests use the mock-S3 demo URI s3://demo-bucket/contracts/invoice-001.pdf (USE_MOCK_S3=true) which the backend honours.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All iteration-8 review_request bullets are GREEN. Reusable regression suite: cd /app && python -m pytest backend/tests/test_chunking_and_tokens.py backend/tests/test_vanilla_frontend_integration.py -v. Key new fields on every extraction result: tokensEstimate (int>0), tokensSavedVsRaw (int>=0), chunkCount (int>=1), chunked (bool). UI testids of interest: tokens-badge / chunks-badge (containers) + #tokens-badge-label / #chunks-badge-label (text spans, queried by id not data-testid). The docs panel adds data-testid='doc-nav-benefits' for the BENEFITS.md doc. Docker daemon not available in the preview pod — Dockerfile + .dockerignore were only static-validated; if a future iteration needs an actual build, use a CI runner.",
+  "rca of the issue": "N/A — no functional bugs. One pre-existing regression test (TestDocuments.test_list) hard-coded the old 3-doc list and failed on first run; updated to expect the new 4-doc list including 'benefits'. This is a test-only change, not a fix to product code."
+}
