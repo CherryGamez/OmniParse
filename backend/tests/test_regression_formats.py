@@ -169,7 +169,7 @@ def test_sync_s3_json_body_returns_200(session, token):
 
 
 # ============================================================
-# NEW: OFFLINE OCR (Tesseract deu+eng) regression
+# OFFLINE OCR (PaddleOCR PP-OCRv5, multilingual latin: de+en) regression
 # ============================================================
 def _upload_path(session, token, fs_path, filename, mime, cid_prefix="ocr"):
     if not os.path.exists(fs_path):
@@ -187,7 +187,7 @@ def _upload_path(session, token, fs_path, filename, mime, cid_prefix="ocr"):
 
 
 def test_sync_ocr_image_jpeg_german(session, token):
-    """OCR on a JPEG image with German text -> ocrUsed=true, ocrEngine has deu+eng."""
+    """OCR on a JPEG image with German text -> ocrUsed=true, ocrEngine=paddleocr:latin."""
     r, cid = _upload_path(session, token, "/tmp/german_doc.jpg", "german_doc.jpg",
                           "image/jpeg", cid_prefix="ocr-img")
     assert r.status_code == 200, f"status={r.status_code} body={r.text[:400]}"
@@ -199,8 +199,7 @@ def test_sync_ocr_image_jpeg_german(session, token):
     assert result.get("model") == "mock"
     assert result.get("ocrUsed") is True, f"ocrUsed must be True for image, got {result.get('ocrUsed')}"
     engine = (result.get("ocrEngine") or "").lower()
-    assert "tesseract" in engine and "deu" in engine and "eng" in engine, \
-        f"Expected tesseract:deu+eng, got '{engine}'"
+    assert "paddleocr" in engine, f"Expected paddleocr:latin, got '{engine}'"
     md = result.get("markdown") or ""
     assert len(md) > 0, "markdownChars=0 from OCR image"
     structured = result.get("structured") or {}

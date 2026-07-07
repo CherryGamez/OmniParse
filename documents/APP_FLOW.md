@@ -50,7 +50,7 @@ The UI is a two-column console: **Input Panel** (left) and **Output Panel**
                            ├─ yes ─▶ ONE vision-LLM call
                            │         → {transcription, structured}
                            │         ocrEngine = "vision:openai:gpt-5.4"
-                           └─ no/failed ─▶ Tesseract (preprocessed, deu+eng)
+                           └─ no/failed ─▶ PaddleOCR (PP-OCRv5, latin: de+en+…)
                                            → text LLM → structured
    temp file deleted (always)
    ```

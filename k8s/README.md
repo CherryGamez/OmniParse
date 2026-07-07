@@ -53,5 +53,7 @@ Adjust the URL / model to whatever runs in your cluster
 - For HA / multi-replica, swap the embedded SQLite for PostgreSQL:
   set `DATABASE_URL=postgresql+asyncpg://USER:PASS@host:5432/dbname` (and
   `pip install asyncpg` at image-build time).
-- For HEIC / scanned-PDF / German-ID OCR, install `tesseract-ocr`,
-  `tesseract-ocr-deu`, `tesseract-ocr-eng` in your container image.
+- HEIC / scanned-PDF / German-ID OCR needs **no** system OCR binary — PaddleOCR
+  (PP-OCRv5) runs via ONNXRuntime (`rapidocr-onnxruntime` from `requirements.txt`,
+  models bundled in `backend/models/ocr`). Just ensure `libgl1` + `libglib2.0-0`
+  are present in the image (OpenCV dependency; already in the provided Dockerfile).

@@ -17,7 +17,7 @@ Every commercial multimodal model bills image input at a tiled rate. A single 10
 | Stage                    | Engine                   | Token cost              |
 |--------------------------|--------------------------|-------------------------|
 | PDF/DOCX/PPTX/XLSX → text | **MarkItDown** (local)   | **0 tokens** (free, deterministic) |
-| Image / scanned PDF → text | **Tesseract** (local OCR, `deu+eng`) | **0 tokens** (free, offline) |
+| Image / scanned PDF → text | **PaddleOCR** PP-OCRv5 via ONNXRuntime (local OCR, multilingual `latin` = de+en+…) | **0 tokens** (free, offline) |
 | Text → structured JSON   | LLM (Gemini / Claude / vLLM / Ollama) | **~text-chars / 4** tokens |
 | ID cards / driving licences (only when accuracy matters) | Vision LLM single-shot | ~1,100 tokens (one call, not per page) |
 
@@ -57,7 +57,7 @@ Each response surfaces `chunked` and `chunkCount` so downstream systems can audi
 | Concern                       | How the platform handles it |
 |-------------------------------|-----------------------------|
 | LLM call                      | `LLM_PROVIDER=openai_compatible` → point at any internal vLLM / Ollama / TGI / LiteLLM endpoint. No outbound internet, no SaaS proxy. |
-| OCR                           | Tesseract binary + offline `deu+eng` language packs. No cloud OCR. |
+| OCR                           | PaddleOCR (PP-OCRv5) models via ONNXRuntime — pure-python wheels, models bundled, no cloud OCR, no system binary. |
 | PDF rasterization             | `pypdfium2` (self-contained wheel, no AGPL, no `mutool` binary). |
 | HEIC / AVIF support           | `pillow-heif` + `pillow-avif-plugin` (pure wheels). |
 | Front-end                     | Vanilla HTML/CSS/JS — **zero `npm install`, zero CDNs, zero Google Fonts**. |
@@ -70,14 +70,14 @@ The single-container model (FastAPI serves both `/api/*` and the static UI at `/
 ## 4. Beyond cost — operational benefits
 
 ### Determinism and auditability
-The MarkItDown / Tesseract step is fully deterministic — the same PDF always produces the same Markdown. That Markdown is returned in every API response (the `markdown` field) so reviewers can prove *exactly* what the LLM saw. This is invaluable for:
+The MarkItDown / PaddleOCR step is fully deterministic — the same PDF always produces the same Markdown. That Markdown is returned in every API response (the `markdown` field) so reviewers can prove *exactly* what the LLM saw. This is invaluable for:
 - **Compliance** — auditors can re-run extraction offline against the stored Markdown without re-paying for LLM calls.
 - **Reproducibility** — `correlationId` traces the run end-to-end through structured JSON logs.
 - **Debugging** — if a field is wrong, you can immediately tell whether it was the OCR step or the LLM step.
 
 ### Graceful degradation
 - No LLM key configured → deterministic mock extractor returns sensible JSON so the UI / pipeline never breaks.
-- Vision LLM unavailable on an image → automatic fallback to Tesseract OCR + text LLM.
+- Vision LLM unavailable on an image → automatic fallback to PaddleOCR + text LLM.
 - Scanned PDF with no text layer → automatic OCR fallback via PDFium rasterization.
 - Per-chunk LLM failure on a 5xx → tenacity retries; per-chunk 4xx → fails fast with RFC 7807 problem detail.
 
@@ -104,3 +104,4 @@ The vanilla UI uses RELATIVE URLs (`fetch('/api/v1/...')`) so:
 | Node / yarn installs in prod          | 1                         | **0**         | −100 %      |
 
 > The `tokensEstimate` and `tokensSavedVsRaw` fields are returned on **every** sync/async extraction response so you can track these numbers live, per document, in production.
+

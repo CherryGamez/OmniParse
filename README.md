@@ -20,11 +20,11 @@ production.
 
 ### "Omniparse" — extract from (almost) any file, incl. images & German IDs
 - **Office/text:** PDF, DOCX, PPTX, XLS/XLSX, MSG (Outlook), TXT, MD, HTML, CSV, JSON (MarkItDown).
-- **Images & scanned PDFs:** JPG/JPEG, PNG, TIFF, BMP, WEBP, GIF, **HEIC/HEIF** — via **offline Tesseract OCR** (`deu`+`eng`, fully air-gapped). Scanned/image-only PDFs are auto-detected (no text layer) and rasterized page-by-page with PDFium (`pypdfium2`), then OCR'd.
+- **Images & scanned PDFs:** JPG/JPEG, PNG, TIFF, BMP, WEBP, GIF, **HEIC/HEIF** — via **offline PaddleOCR (PP-OCRv5)** run through ONNXRuntime (multilingual `latin` model → German + English + ~35 more Latin-script languages, fully air-gapped). Scanned/image-only PDFs are auto-detected (no text layer) and rasterized page-by-page with PDFium (`pypdfium2`), then OCR'd.
 - **German first-class:** umlauts/ß preserved end-to-end; **Personalausweis / Reisepass / Aufenthaltstitel auto-detected** and mapped to a dedicated ID schema (documentType, surname, givenNames, dateOfBirth, placeOfBirth, nationality, documentNumber, dateOfExpiry, address, mrz[]).
-- **Optional vision OCR:** set `OCR_VISION=true` to transcribe images with a hosted vision model (Llama-3.2-Vision / Qwen2-VL / llava) via your `openai_compatible` endpoint instead of Tesseract — higher accuracy on ID cards, still air-gapped.
+- **Optional vision OCR:** set `OCR_VISION=true` to transcribe images with a hosted vision model (Llama-3.2-Vision / Qwen2-VL / llava) via your `openai_compatible` endpoint instead of PaddleOCR — higher accuracy on ID cards, still air-gapped.
 
-> Requires the Tesseract binary + German data: `tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng` (see setup below).
+> No system OCR binary required — PaddleOCR PP-OCRv5 models run via ONNXRuntime (`rapidocr-onnxruntime`). The recognition model + dictionary ship in `backend/models/ocr`; detector/angle models ship inside the wheel, so OCR works fully offline with no runtime downloads.
 
 It ships with SYNC + ASYNC extraction modes, mock OIDC/JWT auth + RBAC,
 end-to-end `correlationId` tracing, RFC 7807 error responses, Kubernetes
@@ -119,12 +119,13 @@ It is echoed back on the response and stamped on every structured log line.
 
 ### Prerequisites
 - **Python 3.10+** — that's it for production. **No Node.js / yarn required.**
-- **Tesseract OCR + German language data** (for image/scanned-doc extraction):
-  - **macOS:** `brew install tesseract tesseract-lang` (includes `deu`)
-  - **Debian/Ubuntu:** `sudo apt-get install -y tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng`
-  - **Windows:** install the UB-Mannheim Tesseract build, tick **German** during
-    setup, and add it to `PATH` (or set `pytesseract.pytesseract.tesseract_cmd`).
-    Verify with `tesseract --list-langs` (should list `deu eng`).
+- **No system OCR binary needed.** OCR uses **PaddleOCR (PP-OCRv5) via ONNXRuntime**
+  (`rapidocr-onnxruntime`, installed from `requirements.txt`). The multilingual
+  `latin` recognition model + dictionary are bundled in `backend/models/ocr`
+  (German + English + ~35 Latin-script languages); detector/angle models ship
+  inside the wheel — so image/scanned-doc extraction works fully offline.
+  - **Linux slim images:** ensure `libgl1` and `libglib2.0-0` are present (OpenCV
+    dependency) — already handled in the provided Dockerfile.
 
 ---
 
@@ -235,7 +236,7 @@ The platform ships as one container that serves **both** the API and the UI.
 A `Dockerfile` and a minimal manifest set are included:
 
 ```bash
-# 1. Build the image (Python 3.11 + Tesseract deu/eng + vanilla UI baked in)
+# 1. Build the image (Python 3.11 + PaddleOCR/ONNX + vanilla UI baked in)
 docker build -t YOUR_REGISTRY/doc-intel:1.0.0 .
 
 # 2. (Optional) smoke-test locally
@@ -253,9 +254,10 @@ kubectl port-forward svc/doc-intel 8080:80
 # → open http://localhost:8080
 ```
 
-The Dockerfile is **multi-stage and rootless** (image ≈ 350 MB), includes
-`tesseract-ocr deu+eng` for offline OCR, mounts a writable `/data` volume for
-the embedded SQLite job store, and exposes `HEALTHCHECK` against `/health`.
+The Dockerfile is **multi-stage and rootless** (image ≈ 400 MB), runs **PaddleOCR
+(PP-OCRv5) via ONNXRuntime** for offline OCR (no system OCR binary; models bundled
+in `backend/models/ocr`), mounts a writable `/data` volume for the embedded SQLite
+job store, and exposes `HEALTHCHECK` against `/health`.
 
 Configure the LLM via env vars in `k8s/deployment.yaml`:
 
@@ -284,7 +286,7 @@ A scanned 20-page contract sent directly to a vision LLM costs ~**22,000 input
 tokens** (≈ 1,100 per page-tile, billed *every time* you process it). The same
 contract through this pipeline:
 
-1. **MarkItDown / Tesseract** turn the document into Markdown locally — **0 LLM
+1. **MarkItDown / PaddleOCR** turn the document into Markdown locally — **0 LLM
    tokens** (deterministic, free, offline).
 2. **Heading-aware chunking with overlap** keeps every LLM call under the
    model's context window; tables and line items are never split mid-row.

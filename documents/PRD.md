@@ -32,8 +32,8 @@ A single extraction API + demo console that:
 2. Converts it to an intermediate text/Markdown representation.
 3. Uses a **pluggable LLM** (self-hosted or cloud) to emit structured JSON.
 4. For **images (ID cards, licences, receipts)** uses a **vision-capable LLM**
-   that reads the image directly — falling back to offline Tesseract OCR when
-   no vision model is available.
+   that reads the image directly — falling back to offline PaddleOCR (PP-OCRv5)
+   when no vision model is available.
 
 ---
 
@@ -68,8 +68,9 @@ A single extraction API + demo console that:
 - Solves the accuracy problem on **German ID cards (Personalausweis), passports,
   residence permits and driver's licences (Führerschein)** where classic OCR is
   defeated by guilloche security backgrounds.
-- Automatic **fallback to offline Tesseract OCR** (deu+eng) when no vision model
-  is configured or the vision call fails.
+- Automatic **fallback to offline PaddleOCR (PP-OCRv5, multilingual `latin` =
+  German + English + more)** when no vision model is configured or the vision
+  call fails.
 
 ### F4 — German identity-document schema
 Auto-detected German/EU identity documents map to a dedicated schema:
@@ -119,7 +120,7 @@ Selected via `LLM_PROVIDER` env var, **no code change**:
 | Sync extraction latency (image, vision path) | < 20 s p95 |
 | Supported file formats | ≥ 18 |
 | Extraction failure surfaced as actionable 4xx (not 500) | 100% |
-| Demo runs fully offline (mock + Tesseract) | Yes |
+| Demo runs fully offline (mock + PaddleOCR) | Yes |
 
 ---
 
@@ -140,13 +141,16 @@ Selected via `LLM_PROVIDER` env var, **no code change**:
 ## 7. Release Notes (delta in this release)
 
 - **FIXED**: Wrong/partial extraction on attached ID-card images. Root causes:
-  (1) images were read by Tesseract whose output is heavily corrupted by ID-card
+  (1) images were read by an OCR engine whose output was corrupted by ID-card
   security patterns; (2) the vision path was unreachable for the default
   provider (no vision support implemented for Gemini/Anthropic, `OCR_VISION`
   defaulted to false); (3) the heuristic fallback assumed `Label: value` on one
   line, while German cards print values on the line **below** the label.
 - **NEW**: Single-shot vision extraction (image → transcription + structured JSON).
 - **NEW**: Vision support for all providers (Emergent / Gemini / Anthropic / OpenAI-compatible).
-- **NEW**: AVIF image support; Tesseract pre-processing (grayscale/upscale/autocontrast).
+- **NEW**: AVIF image support; OCR image pre-processing (orientation/exif handling).
+- **NEW (2025-07)**: OCR engine migrated from Tesseract to **PaddleOCR (PP-OCRv5)**
+  run via ONNXRuntime — multilingual `latin` model (German + English + ~35 more
+  Latin-script languages), no system binary, models bundled, `ocrEngine=paddleocr:latin`.
 - **NEW**: Führerschein (driving licence) added to ID detection + schema (categories).
 - **NEW**: `documents/` folder with PRD, TRD, App Flow + in-app Docs view + API.

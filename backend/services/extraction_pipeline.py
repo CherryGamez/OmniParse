@@ -759,7 +759,7 @@ class ExtractionPipeline:
                     )
                     structured = None
 
-            # ---- Classic path: convert to Markdown (MarkItDown / Tesseract) ----
+            # ---- Classic path: convert to Markdown (MarkItDown / PaddleOCR) ----
             if structured is None:
                 try:
                     markdown, ocr_used = await self._convert_path(path, resolved_name)

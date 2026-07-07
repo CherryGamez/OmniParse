@@ -3,9 +3,10 @@
 #  Document Intelligence Platform — single-container, air-gapped image
 #
 #  • FastAPI serves BOTH the JSON API (`/api/*`) and the vanilla HTML UI (`/`)
-#  • Includes Tesseract + German/English language packs for offline OCR
+#  • Offline OCR via PaddleOCR (PP-OCRv5) models run through ONNXRuntime —
+#    pure-python wheels, no system OCR binary; models bundled under backend/models
 #  • No Node.js, no yarn — the UI is plain dist/index.html + styles.css + app.js
-#  • Final image size ≈ 350 MB (python-slim + tesseract + python wheels)
+#  • Final image size ≈ 400 MB (python-slim + onnxruntime + python wheels)
 # ============================================================================
 
 # ----------------------------------------------------------------------------
@@ -46,14 +47,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PORT=8001
 
 # Runtime system packages:
-#   * tesseract-ocr + deu/eng    — offline OCR (German + English)
-#   * libgl1 / libglib2.0-0      — pypdfium2 / PIL on slim images
+#   * libgl1 / libglib2.0-0      — OpenCV (PaddleOCR/RapidOCR) + pypdfium2 / PIL
 #   * curl                       — for HEALTHCHECK
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      tesseract-ocr \
-      tesseract-ocr-deu \
-      tesseract-ocr-eng \
       libgl1 \
       libglib2.0-0 \
       curl \

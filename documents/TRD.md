@@ -25,7 +25,7 @@
                               │              ExtractionPipeline                │
                               │ Ingestion → (route by type)                    │
                               │   images:  Vision LLM single-shot ──────────┐  │
-                              │            └─fallback→ Tesseract OCR        │  │
+                              │            └─fallback→ PaddleOCR (PP-OCRv5)  │  │
                               │   pdf:     MarkItDown → OCR fallback        │  │
                               │   office:  MarkItDown                       │  │
                               │ → Chunking → LLM extraction (tenacity)  ◀───┘  │
@@ -43,7 +43,7 @@
 |---|---|
 | API | FastAPI 0.115, Uvicorn, Pydantic v2, pydantic-settings |
 | Conversion | MarkItDown (pdf/docx/pptx/xls/xlsx/outlook extras) |
-| OCR (offline) | Tesseract via pytesseract (`deu+eng`), pypdfium2 rasterization, pillow-heif (HEIC), pillow-avif-plugin (AVIF) |
+| OCR (offline) | PaddleOCR PP-OCRv5 models via ONNXRuntime (`rapidocr-onnxruntime`, multilingual `latin` = de+en+…), pypdfium2 rasterization, pillow-heif (HEIC), pillow-avif-plugin (AVIF) |
 | LLM SDKs | openai, anthropic, google-genai, emergentintegrations |
 | Retries | tenacity (exponential backoff, 3 attempts, non-retryable 4xx) |
 | Job store | SQLAlchemy 2 (async) + aiosqlite (PostgreSQL-ready) |
@@ -69,7 +69,7 @@ backend/
 └── services/
     ├── extraction_pipeline.py   # orchestrator + ingestion/conversion/chunking/LLM services
     ├── llm_providers.py         # provider abstraction (text + vision) + factory
-    ├── ocr_service.py           # Tesseract OCR, image preprocessing, vision-safe b64
+    ├── ocr_service.py           # PaddleOCR (PP-OCRv5) via ONNXRuntime, PDF raster, vision-safe b64
     └── job_repository.py        # async job persistence
 ```
 
@@ -84,11 +84,12 @@ backend/
      **single-shot vision extraction**: one multimodal call returns
      `{"transcription": "...", "structured": {...}}`. `ocrEngine="vision:<model>"`.
    - On vision failure (`LLMExtractionError`/`LLMFatalError` after retries) →
-     log + fall back to Tesseract.
-   - Tesseract path: pre-process (grayscale → upscale to ≥1600 px → autocontrast)
-     → `image_to_string(lang="deu+eng")` → text LLM extraction. `ocrEngine="tesseract:deu+eng"`.
+     log + fall back to PaddleOCR.
+   - PaddleOCR path: PP-OCRv5 detection + multilingual `latin` recognition
+     (via ONNXRuntime) → line-ordered text → text LLM extraction.
+     `ocrEngine="paddleocr:latin"`.
 3. **PDF**: MarkItDown text layer; if empty and `OCR_ENABLED` → pypdfium2
-   rasterization (300 DPI, ≤`OCR_MAX_PAGES`) + per-page Tesseract.
+   rasterization (300 DPI, ≤`OCR_MAX_PAGES`) + per-page PaddleOCR.
 4. **Everything else**: MarkItDown.
 5. Markdown > `CHUNK_CHAR_THRESHOLD` (12 000) is chunked (~8 000 chars, paragraph-aligned).
 6. No extractable text → `ConversionError` → **422** problem+json (never 500).
@@ -167,16 +168,18 @@ Errors are RFC 7807 `application/problem+json` with `correlationId`:
 | `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | – / `claude-sonnet-4-6` | own Claude key |
 | `OPENAI_BASE_URL` / `OPENAI_MODEL` / `OPENAI_API_KEY` | `http://localhost:11434/v1` / `llama3.1` / `not-needed` | air-gapped endpoint |
 | `USE_MOCK_LLM` | `false` | force deterministic mock |
-| `OCR_VISION` | **`true`** | vision-LLM image reading (fallback: Tesseract) |
-| `OCR_ENABLED` / `OCR_LANGUAGES` / `OCR_DPI` / `OCR_MAX_PAGES` | `true` / `deu+eng` / `300` / `25` | offline OCR |
+| `OCR_VISION` | **`true`** | vision-LLM image reading (fallback: PaddleOCR) |
+| `OCR_ENABLED` / `OCR_LANGUAGES` / `OCR_DPI` / `OCR_MAX_PAGES` | `true` / `latin` / `300` / `25` | offline OCR (PaddleOCR PP-OCRv5) |
 | `USE_MOCK_S3` | `true` | stub S3 |
 | `MAX_SYNC_FILE_MB` | `5` | sync size cap |
 | `CHUNK_CHAR_THRESHOLD` / `CHUNK_SIZE` | `12000` / `8000` | chunking |
 | `DATABASE_URL` | `sqlite+aiosqlite:///./jobs.db` | job store (PostgreSQL-ready) |
 | `AUTH_DISABLED` | `false` | local smoke-test bypass only |
 
-System packages required for the OCR fallback path:
-`tesseract-ocr tesseract-ocr-deu tesseract-ocr-eng`.
+No system OCR binary required for the OCR fallback path — PaddleOCR PP-OCRv5
+models run via ONNXRuntime (`rapidocr-onnxruntime`); the recognition model +
+dict are bundled in `backend/models/ocr`, detector/angle models ship in the
+wheel. Linux slim images only need `libgl1` + `libglib2.0-0` (OpenCV dep).
 
 ---
 
@@ -185,13 +188,13 @@ System packages required for the OCR fallback path:
 - **Security**: documents handled only in temp files with guaranteed cleanup;
   no document content persisted (only job metadata + result JSON); JWT-gated
   extraction endpoints; XSS-safe JSON viewer (no `dangerouslySetInnerHTML`).
-- **Air-gap**: with `openai_compatible` + Tesseract, zero outbound internet.
+- **Air-gap**: with `openai_compatible` + PaddleOCR (bundled models), zero outbound internet.
 - **Observability**: structured JSON logs, every line stamped with correlationId;
   `X-Correlation-Id` echoed on every response.
-- **Resilience**: tenacity retries; vision→Tesseract fallback; LLM failures map
+- **Resilience**: tenacity retries; vision→PaddleOCR fallback; LLM failures map
   to 502, document problems to 4xx; callbacks are best-effort (never crash worker).
 - **Portability**: Windows-safe PDF rasterization (pypdfium2, no PyMuPDF
-  atexit crash); HEIC/AVIF wheels, no external binaries except Tesseract.
+  atexit crash); HEIC/AVIF wheels; OCR via ONNXRuntime, no external OCR binary.
 
 ---
 
@@ -202,7 +205,7 @@ System packages required for the OCR fallback path:
 - `backend/tests/test_regression_formats.py` — format matrix (9 office/text
   types), blank-PDF 422/FAILED regression, OCR image tests, umlaut round-trip.
 - **Note**: the pytest suites assert **mock-mode** invariants (`mock=true`,
-  `ocrEngine=tesseract:*`). Run them with `USE_MOCK_LLM=true OCR_VISION=false`.
+  `ocrEngine=paddleocr:*`). Run them with `USE_MOCK_LLM=true OCR_VISION=false`.
   Real-LLM accuracy is validated via the test reports in `/test_reports`.
 
 ---
