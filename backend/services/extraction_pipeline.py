@@ -5,7 +5,7 @@ Two logical paths stitched together behind a modular service layer:
 
     Text documents:  Document (PDF/DOCX/...) --MarkItDown--> Markdown --LLM--> JSON
     Images:          Image --Vision LLM (single shot)--> {transcription, structured JSON}
-                     (falls back to Tesseract OCR -> text LLM when no vision model)
+                     (falls back to PaddleOCR (PP-OCRv5) -> text LLM when no vision model)
 
 Each responsibility lives in its own service so they can be tested and evolved
 independently:
@@ -357,7 +357,7 @@ _SYSTEM_PROMPT = (
 )
 
 # Single-shot vision prompt: transcription + structured JSON in one call. This is
-# far more accurate on ID cards / licences than Tesseract because the model reads
+# far more accurate on ID cards / licences than plain OCR because the model reads
 # the image directly (no OCR noise from guilloche security backgrounds).
 _VISION_SYSTEM_PROMPT = (
     "You are an enterprise document extraction engine with vision capabilities. "
@@ -670,14 +670,14 @@ class ExtractionPipeline:
     async def _convert_path(self, path: str, name: str) -> tuple[str, bool]:
         """Convert a local file to Markdown, choosing the right engine by type.
 
-        Returns ``(markdown, ocr_used)``. Images go to Tesseract OCR (the vision
+        Returns ``(markdown, ocr_used)``. Images go to PaddleOCR (the vision
         path is handled earlier in ``run``); PDFs use MarkItDown's text layer and
         fall back to OCR when the page has none (scanned/image-only PDFs);
         everything else uses MarkItDown.
         """
         ext = os.path.splitext(name)[1].lower()
 
-        # Images -> offline Tesseract OCR.
+        # Images -> offline PaddleOCR (PP-OCRv5, ONNXRuntime).
         if self.ocr.is_image(ext):
             if not settings.ocr_enabled:
                 raise ConversionError("OCR is disabled; cannot read image files.")
@@ -754,7 +754,7 @@ class ExtractionPipeline:
                     ocr_engine = f"vision:{self.extractor.model_name}"
                 except (LLMExtractionError, LLMFatalError) as exc:
                     logger.warning(
-                        "Vision extraction failed -> Tesseract fallback",
+                        "Vision extraction failed -> PaddleOCR fallback",
                         extra={"extra_fields": {"error": str(exc)}},
                     )
                     structured = None
@@ -768,7 +768,7 @@ class ExtractionPipeline:
                     # an unprocessable document (422), not an internal error (500).
                     raise ConversionError(_NO_TEXT_MESSAGE) from exc
                 if ocr_used:
-                    ocr_engine = f"tesseract:{settings.ocr_languages}"
+                    ocr_engine = self.ocr.engine_name()
 
         if structured is None:
             if not markdown:
@@ -794,7 +794,7 @@ class ExtractionPipeline:
         #                      page of a scanned PDF costs ~1100 input tokens
         #                      JUST for the image, regardless of length).
         #
-        # The savings come from the deterministic MarkItDown / Tesseract step,
+        # The savings come from the deterministic MarkItDown / PaddleOCR step,
         # which converts the document for FREE before the LLM ever sees it.
         structured_str = (
             json.dumps(structured, ensure_ascii=False) if structured is not None else ""

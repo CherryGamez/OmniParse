@@ -101,3 +101,45 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+## user_problem_statement
+Replace the existing Tesseract OCR implementation in the OmniParse project with PaddleOCR (PP-OCRv5), ensure the project runs with PaddleOCR directly, and support multilingual OCR (German + English).
+
+## Implementation notes (main agent)
+- Environment is ARM64/aarch64. Native `paddlepaddle` inference SEGFAULTS on ARM64 (unsupported upstream). Verified via troubleshoot agent.
+- Solution: run the SAME PaddleOCR PP-OCRv5 models via ONNXRuntime using `rapidocr-onnxruntime`. Bundled multilingual `latin` PP-OCRv5 recognition model (backend/models/ocr/latin_rec.onnx + latin_dict.txt) covers German+English (+~35 Latin-script langs incl. ä ö ü ß). Detector/angle models are bundled in the wheel -> fully offline, ~8MB.
+- OCR service rewritten: /app/backend/services/ocr_service.py (public API unchanged: is_image, image_to_b64, ocr_image, ocr_pdf). ocrEngine now reports "paddleocr:latin".
+- Removed pytesseract; added rapidocr-onnxruntime/onnxruntime to requirements.txt.
+
+## backend:
+  - task: "PaddleOCR (PP-OCRv5) OCR engine replaces Tesseract, multilingual (de+en)"
+    implemented: true
+    working: true
+    file: "backend/services/ocr_service.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Rewrote OCR service to use PaddleOCR PP-OCRv5 models via ONNXRuntime (rapidocr-onnxruntime). Direct calls verified: German+English recognized, engine label 'paddleocr:latin'. Image-only PDF /app/de_scan.pdf -> ocrEngine 'paddleocr:latin' with correct multilingual text. Needs API-level regression + OCR-path verification."
+        -working: true
+        -agent: "testing"
+        -comment: "COMPREHENSIVE BACKEND TESTING COMPLETED - ALL CRITICAL TESTS PASSED. Created /app/backend_test.py and executed full test suite. Results: (1) Health endpoint GET /api/health returns 200 with status='healthy' ✅ (2) Readiness endpoint GET /api/ready returns 200 with status='ready' and database='ok' ✅ (3) Auth token minting POST /api/v1/auth/token successfully returns JWT accessToken ✅ (4) Regression test: POST /api/v1/extract/sync with CSV file returns 200 with structured JSON and markdown, pipeline works correctly after OCR swap ✅ (5) OCR TEST (CRITICAL): POST /api/v1/extract/sync with /app/de_scan.pdf (German+English image-only PDF) returns 200, ocrUsed=true, ocrEngine='paddleocr:latin' (NOT tesseract), markdown contains ALL German umlauts (München, Straße, schön, Müller, Über, Äpfel, ü, ö, ä, ß) and English text (2025, OK, text) ✅. PaddleOCR PP-OCRv5 multilingual Latin model correctly extracts German+English text. (6) Dependency check: requirements.txt does NOT contain pytesseract/tesseract ✅, rapidocr-onnxruntime is present ✅, production code does NOT import pytesseract ✅. Minor: pytesseract still importable in venv (leftover from previous install, not used by code, will be removed on fresh install). CONCLUSION: PaddleOCR integration is fully functional and working correctly."
+
+## metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 1
+  run_ui: false
+
+## test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+## agent_communication:
+    -agent: "main"
+    -message: "Please test the OmniParse backend after replacing Tesseract with PaddleOCR (PP-OCRv5 via ONNXRuntime). Auth: mint a mock token at POST /api/v1/auth/token body {\"sub\":\"tester\",\"roles\":[\"extractor\",\"admin\"]}, then Bearer it. (1) Regression: POST /api/v1/extract/sync with a small text/office doc (multipart) still returns 200 with structured JSON + markdown. (2) OCR path: POST /api/v1/extract/sync with the multipart file /app/de_scan.pdf (an image-only German+English PDF). Expect 200, ocrUsed=true, ocrEngine == 'paddleocr:latin', and markdown containing German+English text (umlauts like ü/ö/ä/ß). (3) /api/health and /api/ready return healthy. Do NOT test frontend. Note there must be NO tesseract dependency involved."
+    -agent: "testing"
+    -message: "Backend testing complete. All critical tests passed. PaddleOCR (PP-OCRv5) successfully replaced Tesseract. The OCR engine correctly reports 'paddleocr:latin' and extracts German+English text with umlauts from image-only PDFs. Regression tests confirm non-OCR document extraction still works. Health/readiness endpoints operational. Auth token minting works. No tesseract dependency in requirements.txt or production code. Ready for summary and completion."

@@ -81,7 +81,7 @@ class ExtractionResult(BaseModel):
     mock: bool = Field(description="True when the deterministic mock extractor was used.")
     ocrUsed: bool = Field(default=False, description="True if OCR was used to read the document.")
     ocrEngine: Optional[str] = Field(
-        default=None, description="OCR engine/languages used (e.g. 'tesseract:deu+eng')."
+        default=None, description="OCR engine/languages used (e.g. 'paddleocr:latin')."
     )
     processingMs: int = Field(description="End-to-end pipeline processing time in milliseconds.")
     tokensEstimate: int = Field(
@@ -96,7 +96,7 @@ class ExtractionResult(BaseModel):
         description=(
             "Estimated tokens SAVED vs. sending the raw document straight to a "
             "vision-LLM (≈1100 input tokens per scanned page). The savings come "
-            "from the deterministic MarkItDown / Tesseract pre-processing step."
+            "from the deterministic MarkItDown / PaddleOCR pre-processing step."
         ),
     )
 

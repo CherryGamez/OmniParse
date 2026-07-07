@@ -84,14 +84,19 @@ class Settings(BaseSettings):
     chunk_size: int = 8000
     chunk_overlap: int = 400  # chars carried into the next chunk for context
 
-    # ---- OCR (offline / air-gapped) ------------------------------------------
+    # ---- OCR (offline / air-gapped) — PaddleOCR (PP-OCRv5) via ONNXRuntime ----
     ocr_enabled: bool = True
-    ocr_languages: str = "deu+eng"  # Tesseract language data (German + English)
+    # PaddleOCR recognition model / script. "latin" is the multilingual Latin
+    # model (German + English + ~35 more Latin-script languages, incl. ä ö ü ß).
+    ocr_languages: str = "latin"
+    # Optional override for the directory holding the PP-OCRv5 rec model + dict.
+    # Empty -> backend/models/ocr (bundled with the app).
+    ocr_model_dir: str = ""
     ocr_dpi: int = 300  # rasterization DPI for scanned PDFs
     ocr_max_pages: int = 25  # cap pages OCR'd on large scanned PDFs (latency/memory guard)
     # Use a vision-capable LLM (via the configured provider) to read images
-    # directly instead of Tesseract. Dramatically more accurate on ID cards /
-    # licences with security-pattern backgrounds. Falls back to Tesseract when
+    # directly instead of PaddleOCR. Dramatically more accurate on ID cards /
+    # licences with security-pattern backgrounds. Falls back to PaddleOCR when
     # the provider has no vision support or the vision call fails.
     ocr_vision: bool = True
 
