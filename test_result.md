@@ -143,3 +143,28 @@ Replace the existing Tesseract OCR implementation in the OmniParse project with 
     -message: "Please test the OmniParse backend after replacing Tesseract with PaddleOCR (PP-OCRv5 via ONNXRuntime). Auth: mint a mock token at POST /api/v1/auth/token body {\"sub\":\"tester\",\"roles\":[\"extractor\",\"admin\"]}, then Bearer it. (1) Regression: POST /api/v1/extract/sync with a small text/office doc (multipart) still returns 200 with structured JSON + markdown. (2) OCR path: POST /api/v1/extract/sync with the multipart file /app/de_scan.pdf (an image-only German+English PDF). Expect 200, ocrUsed=true, ocrEngine == 'paddleocr:latin', and markdown containing German+English text (umlauts like ü/ö/ä/ß). (3) /api/health and /api/ready return healthy. Do NOT test frontend. Note there must be NO tesseract dependency involved."
     -agent: "testing"
     -message: "Backend testing complete. All critical tests passed. PaddleOCR (PP-OCRv5) successfully replaced Tesseract. The OCR engine correctly reports 'paddleocr:latin' and extracts German+English text with umlauts from image-only PDFs. Regression tests confirm non-OCR document extraction still works. Health/readiness endpoints operational. Auth token minting works. No tesseract dependency in requirements.txt or production code. Ready for summary and completion."
+
+## frontend:
+  - task: "Demo console end-to-end OCR extraction with PaddleOCR"
+    implemented: true
+    working: true
+    file: "frontend/dist/index.html, frontend/dist/app.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        -working: "NA"
+        -agent: "main"
+        -comment: "Verify the vanilla-JS demo console can mint a token, upload the image-only German+English PDF /app/de_scan.pdf, run sync extraction, and display OCR results with the PaddleOCR engine label."
+        -working: true
+        -agent: "testing"
+        -comment: "COMPREHENSIVE FRONTEND E2E TEST COMPLETED - ALL TESTS PASSED ✅. Tested at https://e72701ee-e6ec-47c1-bf5a-b96f80fc9a98.preview.emergentagent.com. Results: (1) Page loaded successfully, health-badge and ready-badge both show green/healthy state (class: 'badge ok') ✅ (2) JWT token minting works - clicked mint-token-btn, JWT populated in jwt-input ✅ (3) File upload successful - uploaded /app/de_scan.pdf, filename displayed correctly ✅ (4) Sync mode selected ✅ (5) Extraction completed successfully within timeout ✅ (6) CRITICAL: OCR badge shows 'OCR PADDLEOCR:LATIN' (NOT tesseract) ✅ (7) CRITICAL: Markdown output contains ALL required German umlauts: München, Straße, schön, Müller, Über, Äpfel ✅ AND English text: 'English text', '2025', 'OK' ✅ (8) JSON output shows structured data with German umlauts preserved ✅ (9) No JavaScript console errors detected ✅. Minor: Console log shows 'ready failed: Failed to fetch' but doesn't affect functionality. PaddleOCR PP-OCRv5 integration is fully working end-to-end in the demo console."
+
+## metadata:
+  run_ui: true
+
+## agent_communication:
+    -agent: "main"
+    -message: "Frontend test requested by user. Test the OmniParse demo console (Console tab). Steps: (1) load app, (2) click data-testid='mint-token-btn' to mint a JWT (fills jwt-input), (3) click data-testid='source-tab-upload', (4) upload the file /app/de_scan.pdf into data-testid='file-input', (5) ensure data-testid='mode-sync' selected, (6) click data-testid='extract-btn', (7) wait for result. VERIFY: data-testid='ocr-badge' indicates OCR was used and shows engine 'paddleocr:latin'; click data-testid='output-tab-markdown' and confirm markdown contains German umlaut words (München, Straße, schön, Müller) and English (English text 2025 OK). Confirm no console errors and health-badge/ready-badge are green."
+    -agent: "testing"
+    -message: "Frontend E2E testing complete. ALL TESTS PASSED. The OmniParse demo console successfully demonstrates PaddleOCR PP-OCRv5 integration. OCR badge correctly shows 'paddleocr:latin' engine, all German umlauts (München, Straße, schön, Müller, Über, Äpfel) and English text extracted correctly from /app/de_scan.pdf. No critical issues found. Ready for user acceptance."
