@@ -35,9 +35,9 @@
       "GET http://localhost:8001/api/health -> 200 {status:healthy}",
       "GET http://localhost:8001/health -> 200 (alias)",
       "GET http://localhost:8001/ready -> 200 (alias)",
-      "GET https://omniparse-k8s-deploy.preview.emergentagent.com/ -> 200 (same dist/index.html via :3000 python http.server through ingress)",
-      "GET https://omniparse-k8s-deploy.preview.emergentagent.com/api/health -> 200",
-      "GET https://omniparse-k8s-deploy.preview.emergentagent.com/api/ready -> 200"
+      "GET https://multilang-paddle-ocr.preview.emergentagent.com/ -> 200 (same dist/index.html via :3000 python http.server through ingress)",
+      "GET https://multilang-paddle-ocr.preview.emergentagent.com/api/health -> 200",
+      "GET https://multilang-paddle-ocr.preview.emergentagent.com/api/ready -> 200"
     ]
   },
   "action_items": [],

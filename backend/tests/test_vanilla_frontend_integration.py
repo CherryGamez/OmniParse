@@ -9,7 +9,7 @@ import time
 import pytest
 import requests
 
-BASE = "https://omniparse-k8s-deploy.preview.emergentagent.com"
+BASE = "https://multilang-paddle-ocr.preview.emergentagent.com"
 LOCAL = "http://localhost:8001"
 
 
