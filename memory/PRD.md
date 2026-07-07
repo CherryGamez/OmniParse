@@ -144,3 +144,18 @@ LLM JSON enforcement w/ retries, safe temp-file cleanup.
 - README rewritten: single uvicorn command for local dev (Windows + macOS), Optional static-server section, K8s deploy section.
 - Env fixups (unrelated to migration, but blocking startup): bumped pydantic to >=2.13 to match installed pydantic_core 2.46.x; reinstalled magika~=0.6.1, defusedxml, markdownify, docstring-parser, starlette>=0.40,<0.42.
 - VERIFIED (iteration_7.json): 22/22 new pytest backend regression suite PASS (test_vanilla_frontend_integration.py), all Playwright UI flows GREEN — token mint, source/mode/output tab toggles, sync S3 extraction, async polling PENDING→COMPLETED, docs view rendering PRD/TRD/APP_FLOW. Single-container `curl http://localhost:8001/` returns index.html and `/api/health` returns 200 from the SAME port; preview ingress also routes `/` to :3000 static and `/api/*` to :8001.
+
+## Update (2025-07) — PaddleOCR (PP-OCRv5) replaces Tesseract; multilingual (de+en)
+- Replaced the Tesseract/pytesseract OCR engine with PaddleOCR PP-OCRv5 models.
+- Runtime: models executed via ONNXRuntime (`rapidocr-onnxruntime`) because the
+  platform is ARM64/aarch64 where native `paddlepaddle` inference segfaults
+  (unsupported upstream). ONNXRuntime runs the identical PP-OCR models reliably.
+- Multilingual: bundled `latin` PP-OCRv5 recognition model (backend/models/ocr/
+  latin_rec.onnx + latin_dict.txt, ~8MB) covers German + English + ~35 more
+  Latin-script languages, including German diacritics ä/ö/ü/ß. Detector + angle
+  models ship inside the wheel -> fully offline, no runtime downloads.
+- ocr_service.py rewritten (public API unchanged). ocrEngine now = "paddleocr:latin".
+- config: ocr_languages default "latin" (+ optional ocr_model_dir override).
+- requirements: removed pytesseract; added rapidocr-onnxruntime, onnxruntime, opencv-python.
+- Verified: backend 5/5 tests pass — sync/async extraction regression OK; image-only
+  German+English PDF -> ocrUsed=true, ocrEngine="paddleocr:latin", umlauts extracted.
