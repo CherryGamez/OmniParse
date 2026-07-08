@@ -118,7 +118,7 @@ It is echoed back on the response and stamped on every structured log line.
 > ```
 
 ### Prerequisites
-- **Python 3.10+** — that's it for production. **No Node.js / yarn required.**
+- **Python 3.13** (3.10+ still supported) — that's it for production. **No Node.js / yarn required.**
 - **No system OCR binary needed.** OCR uses **PaddleOCR (PP-OCRv5) via ONNXRuntime**
   (`rapidocr-onnxruntime`, installed from `requirements.txt`). The multilingual
   `latin` recognition model + dictionary are bundled in `backend/models/ocr`
@@ -236,7 +236,7 @@ The platform ships as one container that serves **both** the API and the UI.
 A `Dockerfile` and a minimal manifest set are included:
 
 ```bash
-# 1. Build the image (Python 3.11 + PaddleOCR/ONNX + vanilla UI baked in)
+# 1. Build the image (Python 3.13 + PaddleOCR/ONNX + vanilla UI baked in)
 docker build -t YOUR_REGISTRY/doc-intel:1.0.0 .
 
 # 2. (Optional) smoke-test locally
