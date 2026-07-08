@@ -20,7 +20,7 @@ import requests
 
 BASE_URL = os.environ.get(
     "REACT_APP_BACKEND_URL",
-    "https://multilang-paddle-ocr.preview.emergentagent.com",
+    "https://py313-upgrade.preview.emergentagent.com",
 ).rstrip("/")
 
 API = f"{BASE_URL}/api/v1"

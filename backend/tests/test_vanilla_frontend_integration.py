@@ -9,7 +9,7 @@ import time
 import pytest
 import requests
 
-BASE = "https://multilang-paddle-ocr.preview.emergentagent.com"
+BASE = "https://py313-upgrade.preview.emergentagent.com"
 LOCAL = "http://localhost:8001"
 
 
